@@ -71,6 +71,12 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
           ArrowSchemaInit(out);
           out->name = nullptr;
           ArrowSchemaSetTypeStruct(out, fields->size());
+
+          const org::apache::arrow::flatbuf::Int * field_int = nullptr;
+          const org::apache::arrow::flatbuf::FloatingPoint * field_fp = nullptr;
+          const org::apache::arrow::flatbuf::Decimal * field_decimal = nullptr;
+          const org::apache::arrow::flatbuf::Date * field_date = nullptr;
+          const org::apache::arrow::flatbuf::Time * field_time = nullptr;
           for (size_t i = 0; i < fields->size(); i++) {
               auto field = fields->Get(i);
               auto child = out->children[i];
@@ -84,14 +90,38 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
                   ArrowSchemaSetType(child, NANOARROW_TYPE_NA);
                   break;
               case org::apache::arrow::flatbuf::Type::Int:
-                  // NANOARROW_TYPE_INT64?
-                  // NANOARROW_TYPE_UINT64?
-                  ArrowSchemaSetType(child, NANOARROW_TYPE_INT64);
+                  field_int = field->type_as_Int();
+                  if(field_int->is_signed()) {
+                    if (field_int->bitWidth() == 8) {
+                      ArrowSchemaSetType(child, NANOARROW_TYPE_INT8);
+                    } else if (field_int->bitWidth() == 16) {
+                      ArrowSchemaSetType(child, NANOARROW_TYPE_INT16);
+                    } else if (field_int->bitWidth() == 32) {
+                      ArrowSchemaSetType(child, NANOARROW_TYPE_INT32);
+                    } else {
+                      ArrowSchemaSetType(child, NANOARROW_TYPE_INT64);
+                    }
+                  } else {
+                    if (field_int->bitWidth() == 8) {
+                      ArrowSchemaSetType(child, NANOARROW_TYPE_UINT8);
+                    } else if (field_int->bitWidth() == 16) {
+                      ArrowSchemaSetType(child, NANOARROW_TYPE_UINT16);
+                    } else if (field_int->bitWidth() == 32) {
+                      ArrowSchemaSetType(child, NANOARROW_TYPE_UINT32);
+                    } else {
+                      ArrowSchemaSetType(child, NANOARROW_TYPE_UINT64);
+                    }
+                  }
                   break;
               case org::apache::arrow::flatbuf::Type::FloatingPoint:
-                  // NANOARROW_TYPE_FLOAT?
-                  // NANOARROW_TYPE_DOUBLE?
-                  ArrowSchemaSetType(child, NANOARROW_TYPE_DOUBLE);
+                  field_fp = field->type_as_FloatingPoint();
+                  if (field_fp->precision() == org::apache::arrow::flatbuf::Precision::HALF) {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_HALF_FLOAT);
+                  } else if (field_fp->precision() == org::apache::arrow::flatbuf::Precision::SINGLE) {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_FLOAT);
+                  } else {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_DOUBLE);
+                  }
                   break;
               case org::apache::arrow::flatbuf::Type::Binary:
                   ArrowSchemaSetType(child, NANOARROW_TYPE_BINARY);
@@ -103,24 +133,43 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
                   ArrowSchemaSetType(child, NANOARROW_TYPE_BOOL);
                   break;
               case org::apache::arrow::flatbuf::Type::Decimal:
-                  // NANOARROW_TYPE_DECIMAL128?
-                  // NANOARROW_TYPE_DECIMAL256?
-                  ArrowSchemaSetType(child, NANOARROW_TYPE_DECIMAL256);
+                  // TODO_BIGQUERY: generate a format string for decimal based on precision and scale
+                  field_decimal = field->type_as_Decimal();
+                  if (field_decimal->bitWidth() == 128) {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_DECIMAL128);
+                  } else if (field_decimal->bitWidth() == 256) {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_DECIMAL256);
+                  }
                   break;
               case org::apache::arrow::flatbuf::Type::Date:
-                  // NANOARROW_TYPE_DATE32?
-                  // NANOARROW_TYPE_DATE64?
-                  ArrowSchemaSetType(child, NANOARROW_TYPE_DATE32);
+                  field_date = field->type_as_Date();
+                  if (field_date->unit() == org::apache::arrow::flatbuf::DateUnit::DAY) {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_DATE32);
+                  } else {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_DATE64);
+                  }
                   break;
               case org::apache::arrow::flatbuf::Type::Time:
-                  // NANOARROW_TYPE_TIME32?
-                  // NANOARROW_TYPE_TIME64?
-                  ArrowSchemaSetType(child, NANOARROW_TYPE_TIME64);
+                  field_time = field->type_as_Time();
+                  if (field_time->bitWidth() == 32) {
+                    if (field_time->unit() == org::apache::arrow::flatbuf::TimeUnit::SECOND) {
+                      child->format = "tts";
+                    } else if (field_time->unit() == org::apache::arrow::flatbuf::TimeUnit::MILLISECOND) {
+                      child->format = "ttm";
+                    }
+                  } else if (field_time->bitWidth() == 64) {
+                    if (field_time->unit() == org::apache::arrow::flatbuf::TimeUnit::MICROSECOND) {
+                      child->format = "ttu";
+                    } else if (field_time->unit() == org::apache::arrow::flatbuf::TimeUnit::NANOSECOND) {
+                      child->format = "ttn";
+                    }
+                  }
                   break;
               case org::apache::arrow::flatbuf::Type::Timestamp:
                   ArrowSchemaSetType(child, NANOARROW_TYPE_TIMESTAMP);
                   break;
               case org::apache::arrow::flatbuf::Type::Interval:
+                  // TODO_BIGQUERY:
                   // NANOARROW_TYPE_INTERVAL_MONTHS?
                   // NANOARROW_TYPE_INTERVAL_DAY_TIME?
                   // NANOARROW_TYPE_INTERVAL_MONTH_DAY_NANO?
@@ -130,10 +179,11 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
                   ArrowSchemaSetType(child, NANOARROW_TYPE_LIST);
                   break;
               case org::apache::arrow::flatbuf::Type::Struct_:
-                  // todo: recursively parse struct
+                  // TODO_BIGQUERY: recursively parse struct?
                   ArrowSchemaSetType(child, NANOARROW_TYPE_STRUCT);
                   break;
               case org::apache::arrow::flatbuf::Type::Union:
+                  // TODO_BIGQUERY:
                   // NANOARROW_TYPE_SPARSE_UNION?
                   // NANOARROW_TYPE_DENSE_UNION?
                   ArrowSchemaSetType(child, NANOARROW_TYPE_SPARSE_UNION);
