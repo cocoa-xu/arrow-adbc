@@ -54,6 +54,9 @@ class ReadRowsIterator {
   std::shared_ptr<::google::cloud::bigquery_storage_v1::BigQueryReadClient> client_;
   std::shared_ptr<::google::cloud::bigquery::storage::v1::ReadSession> session_;
   std::shared_ptr<ReadRowsResponse> response_;
+  ReadRowsResponse::iterator current_;
+
+  struct ArrowSchema* parsed_schema_ = nullptr;
 };
 
 class BigqueryStatement {

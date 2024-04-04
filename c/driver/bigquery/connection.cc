@@ -98,6 +98,12 @@ AdbcStatusCode BigqueryConnection::GetTableTypes(struct AdbcConnection* connecti
 
 AdbcStatusCode BigqueryConnection::Init(struct AdbcDatabase* database,
                                         struct AdbcError* error) {
+  if (!database || !database->private_data) {
+    SetError(error, "%s", "[bigquery] Must provide an initialized AdbcDatabase");
+    return ADBC_STATUS_INVALID_ARGUMENT;
+  }
+  database_ =
+      *reinterpret_cast<std::shared_ptr<BigqueryDatabase>*>(database->private_data);
   return ADBC_STATUS_OK;
 }
 

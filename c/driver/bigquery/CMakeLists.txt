@@ -268,6 +268,7 @@ foreach(LIB_TARGET ${ADBC_LIBRARIES})
                                      ${REPOSITORY_ROOT}/c/
                                      ${BIGQUERY_INCLUDE_DIRS}
                                      ${flatbuffers_SOURCE_DIR}/include
+                                     ${CMAKE_CURRENT_LIST_DIR}/include
                                      ${REPOSITORY_ROOT}/c/vendor
                                      ${REPOSITORY_ROOT}/c/driver)
 endforeach()
@@ -295,7 +296,8 @@ if(ADBC_BUILD_TESTS)
   target_include_directories(adbc-driver-bigquery-test SYSTEM
                              PRIVATE ${REPOSITORY_ROOT}
                                      ${REPOSITORY_ROOT}/c/
-                                     ${LIBPQ_INCLUDE_DIRS}
+                                     ${BIGQUERY_INCLUDE_DIRS}
+                                     ${flatbuffers_SOURCE_DIR}/include
                                      ${REPOSITORY_ROOT}/c/vendor
                                      ${REPOSITORY_ROOT}/c/driver)
   adbc_configure_target(adbc-driver-bigquery-test)
