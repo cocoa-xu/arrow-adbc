@@ -98,11 +98,11 @@ AdbcStatusCode BigqueryConnection::GetTableTypes(struct AdbcConnection* connecti
 
 AdbcStatusCode BigqueryConnection::Init(struct AdbcDatabase* database,
                                         struct AdbcError* error) {
-  return ADBC_STATUS_NOT_IMPLEMENTED;
+  return ADBC_STATUS_OK;
 }
 
 AdbcStatusCode BigqueryConnection::Release(struct AdbcError* error) {
-  return ADBC_STATUS_NOT_IMPLEMENTED;
+  return ADBC_STATUS_OK;
 }
 
 AdbcStatusCode BigqueryConnection::Rollback(struct AdbcError* error) {

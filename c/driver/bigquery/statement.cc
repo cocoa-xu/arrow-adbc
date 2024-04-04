@@ -17,6 +17,9 @@
 
 #include "statement.h"
 
+#include <cinttypes>
+#include <memory>
+
 #include <adbc.h>
 #include <google/cloud/bigquery/storage/v1/bigquery_read_client.h>
 #include <nanoarrow/nanoarrow.hpp>
@@ -24,8 +27,84 @@
 #include "common/options.h"
 #include "common/utils.h"
 #include "connection.h"
+#include "database.h"
 
 namespace adbc_bigquery {
+
+AdbcStatusCode ReadRowsIterator::init(struct AdbcError* error) {
+  connection_ = ::google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection();
+  client_ = std::make_shared<::google::cloud::bigquery_storage_v1::BigQueryReadClient>(connection_);
+  session_ = std::make_shared<::google::cloud::bigquery::storage::v1::ReadSession>();
+  session_->set_data_format(::google::cloud::bigquery::storage::v1::DataFormat::ARROW);
+  session_->set_table(table_name_);
+
+  constexpr std::int32_t kMaxReadStreams = 1;
+  auto session = client_->CreateReadSession(project_name_, *session_, kMaxReadStreams);
+  if (!session) {
+    auto& status = session.status();
+    SetError(error, "%s%" PRId32 ", %s", "[bigquery] Cannot create read session: code=", status.code(), status.message().c_str());
+    return ADBC_STATUS_INVALID_STATE;
+  }
+
+  auto response = client_->ReadRows(session->streams(0).name(), 0);
+  response_ = std::make_shared<ReadRowsResponse>(std::move(response));
+
+  return ADBC_STATUS_OK;
+}
+
+int ReadRowsIterator::get_next(struct ArrowArrayStream* stream, struct ArrowArray* out) {
+  if (!stream || !out) {
+    return ADBC_STATUS_INVALID_ARGUMENT;
+  }
+
+  auto* ptr = reinterpret_cast<std::shared_ptr<ReadRowsIterator>*>(stream->private_data);
+  if (!ptr) {
+    return ADBC_STATUS_INVALID_STATE;
+  }
+
+  std::shared_ptr<ReadRowsIterator> &iterator = *ptr;
+  auto cur = iterator->response_->begin();
+  if (cur == iterator->response_->end()) {
+    return 0;
+  }
+
+  auto& row = *cur;
+  if (!row.ok()) {
+    return ADBC_STATUS_INTERNAL;
+  }
+
+  auto& record_batch = row->arrow_record_batch();
+  // TODO_BIGQUERY: parse record batch
+  return 0;
+}
+
+int ReadRowsIterator::get_schema(struct ArrowArrayStream* stream, struct ArrowSchema* out) {
+  if (!stream || !out) {
+    return ADBC_STATUS_INVALID_ARGUMENT;
+  }
+
+  auto* ptr = reinterpret_cast<std::shared_ptr<ReadRowsIterator>*>(stream->private_data);
+  if (!ptr) {
+    return ADBC_STATUS_INVALID_STATE;
+  }
+
+  std::shared_ptr<ReadRowsIterator> &iterator = *ptr;
+  auto& session = iterator->session_;
+  auto& schema = session->arrow_schema();
+
+  // TODO_BIGQUERY: parse schema
+  return 0;
+}
+
+void ReadRowsIterator::release(struct ArrowArrayStream* stream) {
+  if (stream && stream->private_data) {
+    auto* ptr = reinterpret_cast<std::shared_ptr<ReadRowsIterator>*>(stream->private_data);
+    if (ptr) {
+      delete ptr;
+    }
+    stream->private_data = nullptr;
+  }
+}
 
 AdbcStatusCode BigqueryStatement::Bind(struct ArrowArray* values, struct ArrowSchema* schema,
                                        struct AdbcError* error) {
@@ -41,9 +120,27 @@ AdbcStatusCode BigqueryStatement::Cancel(struct AdbcError* error) {
   return ADBC_STATUS_NOT_IMPLEMENTED;
 }
 
-AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ArrowArrayStream* stream,
+AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ::ArrowArrayStream* stream,
                                                int64_t* rows_affected, struct AdbcError* error) {
-  return ADBC_STATUS_NOT_IMPLEMENTED;
+  if (stream) {
+    auto iterator = std::make_shared<ReadRowsIterator>(
+      connection_->database_->project_name_,
+      connection_->database_->table_name_);
+    int ret = iterator->init(error);
+    if (ret != ADBC_STATUS_OK) {
+      return ret;
+    }
+
+    stream->private_data = new std::shared_ptr<ReadRowsIterator>(iterator);
+    stream->get_next = ReadRowsIterator::get_next;
+    stream->get_schema = ReadRowsIterator::get_schema;
+    stream->release = ReadRowsIterator::release;
+    
+    if (rows_affected) {
+      *rows_affected = -1;
+    }
+  }
+  return ADBC_STATUS_OK;
 }
 
 AdbcStatusCode BigqueryStatement::ExecuteSchema(struct ArrowSchema* schema,
@@ -88,7 +185,7 @@ AdbcStatusCode BigqueryStatement::New(struct AdbcConnection* connection,
 }
 
 AdbcStatusCode BigqueryStatement::Prepare(struct AdbcError* error) {
-  return ADBC_STATUS_NOT_IMPLEMENTED;
+  return ADBC_STATUS_OK;
 }
 
 AdbcStatusCode BigqueryStatement::Release(struct AdbcError* error) {
@@ -116,7 +213,7 @@ AdbcStatusCode BigqueryStatement::SetOptionInt(const char* key, int64_t value,
 }
 
 AdbcStatusCode BigqueryStatement::SetSqlQuery(const char* query, struct AdbcError* error) {
-  return ADBC_STATUS_NOT_IMPLEMENTED;
+  return ADBC_STATUS_OK;
 }
 
 }  // namespace adbc_bigquery
