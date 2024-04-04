@@ -139,6 +139,30 @@ find_package(OpenSSL REQUIRED)
 find_package(google_cloud_cpp_bigquery REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
 set(BIGQUERY_LINK_LIBRARIES google-cloud-cpp::bigquery)
 
+if(NOT DEFINED ADBC_DRIVER_BIGQUERY_ENDIAN)
+    if(CMAKE_VERSION VERSION_LESS "3.20.0")
+        INCLUDE(TestBigEndian)
+        TEST_BIG_ENDIAN(ADBC_DRIVER_BIGQUERY_ENDIAN_TEST)
+        if(ADBC_DRIVER_BIGQUERY_ENDIAN_TEST)
+            set(ADBC_DRIVER_BIGQUERY_ENDIAN BIG_ENDIAN)
+        else()
+            set(ADBC_DRIVER_BIGQUERY_ENDIAN LITTLE_ENDIAN)
+        endif()
+    else()
+        if(DEFINED CMAKE_CXX_BYTE_ORDER AND CMAKE_CXX_BYTE_ORDER STREQUAL "BIG_ENDIAN")
+            set(ADBC_DRIVER_BIGQUERY_ENDIAN BIG_ENDIAN)
+        else()
+            set(ADBC_DRIVER_BIGQUERY_ENDIAN LITTLE_ENDIAN)
+        endif()
+    endif()
+endif()
+message(STATUS "ADBC_DRIVER_BIGQUERY_ENDIAN: ${ADBC_DRIVER_BIGQUERY_ENDIAN}")
+if(ADBC_DRIVER_BIGQUERY_ENDIAN STREQUAL "BIG_ENDIAN")
+  set(ADBC_DRIVER_BIGQUERY_ENDIAN_DEF "ADBC_DRIVER_BIGQUERY_ENDIAN=0")
+else()
+  set(ADBC_DRIVER_BIGQUERY_ENDIAN_DEF "ADBC_DRIVER_BIGQUERY_ENDIAN=1")
+endif()
+
 add_arrow_lib(adbc_driver_bigquery
               SOURCES
               bigquery.cc
@@ -163,12 +187,87 @@ add_arrow_lib(adbc_driver_bigquery
               nanoarrow
               ${BIGQUERY_LINK_LIBRARIES})
 
+include(FetchContent)
+FetchContent_Declare(
+  flatbuffers
+  GIT_REPOSITORY https://github.com/google/flatbuffers.git
+  GIT_TAG        v24.3.25
+)
+FetchContent_GetProperties(flatbuffers)
+if(NOT flatbuffers_POPULATED)
+  FetchContent_Populate(flatbuffers)
+endif()
+set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "")
+set(FLATBUFFERS_INSTALL OFF CACHE BOOL "")
+set(FLATBUFFERS_BUILD_FLATLIB OFF CACHE BOOL "")
+add_subdirectory(${flatbuffers_SOURCE_DIR} ${flatbuffers_BINARY_DIR})
+
+if(NOT EXISTS ${CMAKE_CURRENT_LIST_DIR}/include/arrow)
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/arrow)
+endif()
+
+if(NOT EXISTS ${CMAKE_CURRENT_LIST_DIR}/format)
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/format)
+endif()
+
+function(flatc_generate_header_files fbs_filenames fbs_sha256_checksums)
+    set(FLATC_GENERATED_TARGETS "")
+    foreach(fbs checksum IN ZIP_LISTS fbs_filenames fbs_sha256_checksums)
+        set(LOCAL_FBS_FILENAME ${CMAKE_CURRENT_LIST_DIR}/format/${fbs}.fbs)
+        if(NOT EXISTS "${LOCAL_FBS_FILENAME}")
+            set(ARROW_PROTOCOL_FILE_BASE_URL "https://raw.githubusercontent.com/apache/arrow/apache-arrow-15.0.2/format")
+            file(DOWNLOAD
+                "${ARROW_PROTOCOL_FILE_BASE_URL}/${fbs}.fbs"
+                "${LOCAL_FBS_FILENAME}"
+                INACTIVITY_TIMEOUT 300
+                SHOW_PROGRESS
+                EXPECTED_HASH SHA256=${checksum}
+            )
+        endif()
+
+        list(APPEND FLATC_GENERATED_TARGETS "flatc_generate_${fbs}")
+        if(WIN32)
+            set(FLATC_EXECUTABLE ${flatbuffers_BINARY_DIR}/flatc.exe)
+        else()
+            set(FLATC_EXECUTABLE ${flatbuffers_BINARY_DIR}/flatc)
+        endif()
+        add_custom_target(
+            flatc_generate_${fbs} ${FLATC_EXECUTABLE} --no-warnings --cpp --cpp-std c++17 ${CMAKE_CURRENT_LIST_DIR}/format/${fbs}.fbs
+            BYPRODUCTS ${CMAKE_CURRENT_LIST_DIR}/include/arrow/${fbs}_generated.h
+            DEPENDS flatc ${CMAKE_CURRENT_LIST_DIR}/format/${fbs}.fbs
+            WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/arrow
+        )
+    endforeach()
+    set(FLATC_GENERATED_TARGETS ${FLATC_GENERATED_TARGETS} PARENT_SCOPE)
+endfunction(flatc_generate_header_files)
+
+set(FBS_FILES "")
+set(FBS_FILE_SHA256_CHECKSUMS "")
+# Message.fbs
+list(APPEND FBS_FILES Message)
+list(APPEND FBS_FILE_SHA256_CHECKSUMS "32a1464cede1b90d1351faf65726d465d95fbf3a85bd96e2d7222ac979fe20e4")
+# Schema.fbs
+list(APPEND FBS_FILES Schema)
+list(APPEND FBS_FILE_SHA256_CHECKSUMS "34de85517cea535db69c5aeb7e486b331a31bb5a8acf1433099430feab2570df")
+# SparseTensor.fbs
+list(APPEND FBS_FILES SparseTensor)
+list(APPEND FBS_FILE_SHA256_CHECKSUMS "4a340d4ed601fb1c3cb1d60c2bdb139bffa446c0f2c7d7e9fde5a28949075266")
+# Tensor.fbs
+list(APPEND FBS_FILES Tensor)
+list(APPEND FBS_FILE_SHA256_CHECKSUMS "0ea5297a55f8ad00b125a98314f616c2c6249351bdbfea8f429913255b2a07f7")
+flatc_generate_header_files("${FBS_FILES}" "${FBS_FILE_SHA256_CHECKSUMS}")
+
 foreach(LIB_TARGET ${ADBC_LIBRARIES})
-  target_compile_definitions(${LIB_TARGET} PRIVATE ADBC_EXPORTING)
+  if(FLATC_GENERATED_TARGETS)
+    add_dependencies(${LIB_TARGET} ${FLATC_GENERATED_TARGETS})
+  endif()
+  target_compile_definitions(${LIB_TARGET} PRIVATE ADBC_EXPORTING "${ADBC_DRIVER_BIGQUERY_ENDIAN_DEF}")
+  
   target_include_directories(${LIB_TARGET} SYSTEM
                              PRIVATE ${REPOSITORY_ROOT}
                                      ${REPOSITORY_ROOT}/c/
                                      ${BIGQUERY_INCLUDE_DIRS}
+                                     ${flatbuffers_SOURCE_DIR}/include
                                      ${REPOSITORY_ROOT}/c/vendor
                                      ${REPOSITORY_ROOT}/c/driver)
 endforeach()
