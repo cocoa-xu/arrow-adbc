@@ -110,7 +110,7 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
               case org::apache::arrow::flatbuf::Type::Date:
                   // NANOARROW_TYPE_DATE32?
                   // NANOARROW_TYPE_DATE64?
-                  ArrowSchemaSetType(child, NANOARROW_TYPE_DATE64);
+                  ArrowSchemaSetType(child, NANOARROW_TYPE_DATE32);
                   break;
               case org::apache::arrow::flatbuf::Type::Time:
                   // NANOARROW_TYPE_TIME32?
