@@ -378,7 +378,7 @@ int ReadRowsIterator::get_next(struct ArrowArrayStream* stream, struct ArrowArra
   }
 
   auto& serialized_record_batch = row->arrow_record_batch().serialized_record_batch();
-  printf("serialized_record_batch: length=%zu\r\n", serialized_record_batch.length());
+  // printf("serialized_record_batch: length=%zu\r\n", serialized_record_batch.length());
   iterator->current_++;
   return parse_encapsulated_message(
     serialized_record_batch, 
