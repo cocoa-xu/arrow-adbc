@@ -79,6 +79,9 @@ static void BigQueryArrowArrayReleaseInternal(struct ArrowArray* array) {
 
 static ArrowErrorCode BigQueryArrowArraySetStorageType(struct ArrowArray* array,
                                                        enum ArrowType storage_type) {
+  // unhandled types:
+  //  - NANOARROW_TYPE_DICTIONARY
+  //  - NANOARROW_TYPE_EXTENSION
   switch (storage_type) {
     case NANOARROW_TYPE_UNINITIALIZED:
     case NANOARROW_TYPE_NA:
@@ -115,9 +118,10 @@ static ArrowErrorCode BigQueryArrowArraySetStorageType(struct ArrowArray* array,
     case NANOARROW_TYPE_DENSE_UNION:
     case NANOARROW_TYPE_DATE32:
     case NANOARROW_TYPE_DATE64:
+    case NANOARROW_TYPE_TIMESTAMP:
     case NANOARROW_TYPE_TIME32:
     case NANOARROW_TYPE_TIME64:
-    case NANOARROW_TYPE_TIMESTAMP:
+    case NANOARROW_TYPE_DURATION:
       array->n_buffers = 2;
       break;
 
@@ -220,16 +224,19 @@ int parse_encapsulated_message(const std::string& data,
       out->name = nullptr;
       ArrowSchemaSetTypeStruct(out, fields->size());
 
-      char format[32] = {0};
-      int f_len = 0;
       const org::apache::arrow::flatbuf::Int* field_int = nullptr;
       const org::apache::arrow::flatbuf::FloatingPoint* field_fp = nullptr;
       const org::apache::arrow::flatbuf::Decimal* field_decimal = nullptr;
       const org::apache::arrow::flatbuf::Date* field_date = nullptr;
       const org::apache::arrow::flatbuf::Time* field_time = nullptr;
       const org::apache::arrow::flatbuf::Interval* field_interval = nullptr;
-      // const org::apache::arrow::flatbuf::Struct_ * field_struct = nullptr;
+      // const org::apache::arrow::flatbuf::List* field_list = nullptr;
+      // const org::apache::arrow::flatbuf::Struct_* field_struct = nullptr;
       const org::apache::arrow::flatbuf::Union* field_union = nullptr;
+      const org::apache::arrow::flatbuf::FixedSizeBinary* field_fixed_size_binary =
+          nullptr;
+      const org::apache::arrow::flatbuf::FixedSizeList* field_fixed_size_list = nullptr;
+      const flatbuffers::Vector<int32_t>* type_ids;
       for (size_t i = 0; i < fields->size(); i++) {
         auto field = fields->Get(i);
         auto child = out->children[i];
@@ -288,15 +295,14 @@ int parse_encapsulated_message(const std::string& data,
           case org::apache::arrow::flatbuf::Type::Decimal:
             field_decimal = field->type_as_Decimal();
             if (field_decimal->bitWidth() == 128) {
-              f_len = snprintf(format, sizeof(format) - 1, "d:%d,%d",
-                               field_decimal->precision(), field_decimal->scale());
+              ArrowSchemaSetTypeDecimal(child, NANOARROW_TYPE_DECIMAL128,
+                                        field_decimal->precision(),
+                                        field_decimal->scale());
             } else {
-              f_len = snprintf(format, sizeof(format) - 1, "d:%d,%d,%d",
-                               field_decimal->precision(), field_decimal->scale(),
-                               field_decimal->bitWidth());
+              ArrowSchemaSetTypeDecimal(child, NANOARROW_TYPE_DECIMAL256,
+                                        field_decimal->precision(),
+                                        field_decimal->scale());
             }
-            // TODO_BIGQUERY: free child->format in release function
-            child->format = (char*)strndup(format, f_len);
             break;
           case org::apache::arrow::flatbuf::Type::Date:
             field_date = field->type_as_Date();
@@ -310,18 +316,22 @@ int parse_encapsulated_message(const std::string& data,
             field_time = field->type_as_Time();
             if (field_time->bitWidth() == 32) {
               if (field_time->unit() == org::apache::arrow::flatbuf::TimeUnit::SECOND) {
-                child->format = "tts";
+                ArrowSchemaSetTypeDateTime(child, NANOARROW_TYPE_TIME32,
+                                           NANOARROW_TIME_UNIT_SECOND, NULL);
               } else if (field_time->unit() ==
                          org::apache::arrow::flatbuf::TimeUnit::MILLISECOND) {
-                child->format = "ttm";
+                ArrowSchemaSetTypeDateTime(child, NANOARROW_TYPE_TIME32,
+                                           NANOARROW_TIME_UNIT_MILLI, NULL);
               }
             } else if (field_time->bitWidth() == 64) {
               if (field_time->unit() ==
                   org::apache::arrow::flatbuf::TimeUnit::MICROSECOND) {
-                child->format = "ttu";
+                ArrowSchemaSetTypeDateTime(child, NANOARROW_TYPE_TIME64,
+                                           NANOARROW_TIME_UNIT_MICRO, NULL);
               } else if (field_time->unit() ==
                          org::apache::arrow::flatbuf::TimeUnit::NANOSECOND) {
-                child->format = "ttn";
+                ArrowSchemaSetTypeDateTime(child, NANOARROW_TYPE_TIME64,
+                                           NANOARROW_TIME_UNIT_NANO, NULL);
               }
             }
             break;
@@ -341,26 +351,37 @@ int parse_encapsulated_message(const std::string& data,
             }
             break;
           case org::apache::arrow::flatbuf::Type::List:
+            // TODO_BIGQUERY: set its child's type
             ArrowSchemaSetType(child, NANOARROW_TYPE_LIST);
             break;
           case org::apache::arrow::flatbuf::Type::Struct_:
-            // TODO_BIGQUERY: recursively parse struct?
-            // field_struct = field->type_as_Struct_();
-            ArrowSchemaSetType(child, NANOARROW_TYPE_STRUCT);
+            // TODO_BIGQUERY: how do I get its children?
+            field_struct = field->type_as_Struct_();
+            ArrowSchemaSetTypeStruct(child, 1);
             break;
           case org::apache::arrow::flatbuf::Type::Union:
             field_union = field->type_as_Union();
+
+            // TODO_BIGQUERY: figure out the type ids and set their types
+            type_ids = field_union->typeIds();
             if (field_union->mode() == org::apache::arrow::flatbuf::UnionMode::Sparse) {
-              ArrowSchemaSetType(child, NANOARROW_TYPE_SPARSE_UNION);
+              ArrowSchemaSetTypeUnion(child, NANOARROW_TYPE_SPARSE_UNION,
+                                      type_ids->size());
             } else {
-              ArrowSchemaSetType(child, NANOARROW_TYPE_DENSE_UNION);
+              ArrowSchemaSetTypeUnion(child, NANOARROW_TYPE_DENSE_UNION,
+                                      type_ids->size());
             }
             break;
           case org::apache::arrow::flatbuf::Type::FixedSizeBinary:
-            ArrowSchemaSetType(child, NANOARROW_TYPE_FIXED_SIZE_BINARY);
+            field_fixed_size_binary = field->type_as_FixedSizeBinary();
+            ArrowSchemaSetTypeFixedSize(child, NANOARROW_TYPE_FIXED_SIZE_BINARY,
+                                        field_fixed_size_binary->byteWidth());
             break;
           case org::apache::arrow::flatbuf::Type::FixedSizeList:
-            ArrowSchemaSetType(child, NANOARROW_TYPE_FIXED_SIZE_LIST);
+            // TODO_BIGQUERY: set its child's type
+            field_fixed_size_list = field->type_as_FixedSizeList();
+            ArrowSchemaSetTypeFixedSize(child, NANOARROW_TYPE_FIXED_SIZE_LIST,
+                                        field_fixed_size_list->listSize());
             break;
           case org::apache::arrow::flatbuf::Type::Map:
             ArrowSchemaSetType(child, NANOARROW_TYPE_MAP);
@@ -405,10 +426,14 @@ int parse_encapsulated_message(const std::string& data,
 
       auto buffers = data_header->buffers();
       int buffer_index = 0;
+      int ret = EINVAL;
 
       struct ArrowArray* out = (struct ArrowArray*)out_data;
       memset(out, 0, sizeof(struct ArrowArray));
-      ArrowArrayInitFromType(out, NANOARROW_TYPE_STRUCT);
+      ret = ArrowArrayInitFromType(out, NANOARROW_TYPE_STRUCT);
+      if (ret != NANOARROW_OK) {
+        return ret;
+      }
 
       out->n_children = nodes->size();
       out->children =
@@ -470,14 +495,15 @@ int parse_encapsulated_message(const std::string& data,
 
         auto child = out->children[i];
         auto map_to_type = fixed_size_format_map.find(format);
+        int ret = EINVAL;
         if (map_to_type != fixed_size_format_map.end()) {
-          BigQueryArrowArrayInitFromType(child, map_to_type->second);
+          ret = BigQueryArrowArrayInitFromType(child, map_to_type->second);
         } else {
           int format_len = strlen(format);
           if (format_len > 2 && format[0] == 'w' && format[1] == ':') {
             // NANOARROW_TYPE_FIXED_SIZE_BINARY
             //   w:42 - fixed-width binary [42 bytes]
-            ArrowArrayInitFromType(child, NANOARROW_TYPE_FIXED_SIZE_BINARY);
+            ret = ArrowArrayInitFromType(child, NANOARROW_TYPE_FIXED_SIZE_BINARY);
           } else if (format_len > 4 && format[0] == 't' && format[1] == 's' &&
                      format[3] == ':' &&
                      (format[2] == 't' || format[2] == 's' || format[2] == 'u' ||
@@ -487,7 +513,7 @@ int parse_encapsulated_message(const std::string& data,
             //   tsm:... - timestamp [milliseconds] with timezone “...”
             //   tsu:... - timestamp [microseconds] with timezone “...”
             //   tsn:... - timestamp [nanoseconds] with timezone “...”
-            ArrowArrayInitFromType(child, NANOARROW_TYPE_TIMESTAMP);
+            ret = ArrowArrayInitFromType(child, NANOARROW_TYPE_TIMESTAMP);
           } else if (format_len > 2 && format[0] == 'd' && format[1] == ':') {
             // NANOARROW_TYPE_DECIMAL128
             //   d:precision,scale - decimal with precision and scale
@@ -498,17 +524,17 @@ int parse_encapsulated_message(const std::string& data,
             if (format[2] == 's') {
               // NANOARROW_TYPE_SPARSE_UNION
               //   +us:I,J,... - sparse union with types I, J, ...
-              ArrowArrayInitFromType(child, NANOARROW_TYPE_SPARSE_UNION);
+              ret = ArrowArrayInitFromType(child, NANOARROW_TYPE_SPARSE_UNION);
             } else {
               // NANOARROW_TYPE_DENSE_UNION
               //   +ud:I,J,... - dense union with types I, J, ...
-              ArrowArrayInitFromType(child, NANOARROW_TYPE_DENSE_UNION);
+              ret = ArrowArrayInitFromType(child, NANOARROW_TYPE_DENSE_UNION);
             }
           } else if (format_len > 3 && format[0] == '+' && format[1] == 'w' &&
                      format[2] == ':') {
             // NANOARROW_TYPE_FIXED_SIZE_LIST
             //   +w:123 - fixed-size list with 123 elements
-            ArrowArrayInitFromType(child, NANOARROW_TYPE_FIXED_SIZE_LIST);
+            ret = ArrowArrayInitFromType(child, NANOARROW_TYPE_FIXED_SIZE_LIST);
           } else {
             // NANOARROW_TYPE_DICTIONARY
             //   https://arrow.apache.org/docs/format/CDataInterface.html#dictionary-encoded-arrays
@@ -518,12 +544,20 @@ int parse_encapsulated_message(const std::string& data,
                    child_schema->name);
           }
         }
+        if (ret != NANOARROW_OK) {
+          return ret;
+        }
         child->length = node->length();
         child->null_count = node->null_count();
         // printf("    FieldNode %zu: %s %s\r\n", i, child_schema->format,
         // child_schema->name); printf("      child->n_buffers %lld\r\n",
         // child->n_buffers);
 
+        // TODO_BIGQUERY:
+        //   handle NANOARROW_TYPE_LIST
+        //   handle NANOARROW_TYPE_LARGE_LIST
+        //   handle NANOARROW_TYPE_FIXED_SIZE_LIST
+        //   handle NANOARROW_TYPE_DICTIONARY
         for (int fill_buffer = 0; fill_buffer < child->n_buffers; fill_buffer++) {
           // printf("      buffer %d: ", buffer_index);
           auto buffer = buffers->Get(buffer_index);
