@@ -49,23 +49,16 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
   metadata_size = __builtin_bswap32(metadata_size);
 #endif
   data_ptr = (uintptr_t *)(((uint64_t)(uint64_t *)data_ptr) + 4);
-  printf("  continuation: %d\r\n", continuation);
-  printf("  metadata_size: %d\r\n", metadata_size);
+  // printf("  continuation: %d\r\n", continuation);
+  // printf("  metadata_size: %d\r\n", metadata_size);
   auto header = org::apache::arrow::flatbuf::GetMessage(data_ptr);
   auto body_data = (uintptr_t *)(((uint64_t)(uint64_t *)data_ptr) + metadata_size);
-  printf("body_data = %p\r\n", body_data);
   auto header_type = header->header_type();
-  printf("  header_type: %hhu\r\n", header_type);
+  // printf("  header_type: %hhu\r\n", header_type);
   if (header_type == expected_header) {
       if (header_type == org::apache::arrow::flatbuf::MessageHeader::Schema) {
-          std::cout << "  Schema\r\n";
           auto schema = header->header_as_Schema();
           auto fields = schema->fields();
-          for (size_t i = 0; i < fields->size(); i++) {
-              auto field = fields->Get(i);
-              std::cout << "    name=" << field->name()->str() << ", ";
-              std::cout << "type=" << org::apache::arrow::flatbuf::EnumNameType(field->type_type()) << "\r\n";
-          }
 
           // https://arrow.apache.org/docs/format/CDataInterface.html#data-type-description-format-strings
           struct ArrowSchema * out = (struct ArrowSchema *)out_data;
@@ -73,6 +66,8 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
           out->name = nullptr;
           ArrowSchemaSetTypeStruct(out, fields->size());
 
+          char format[32] = {0};
+          int f_len = 0;
           const org::apache::arrow::flatbuf::Int * field_int = nullptr;
           const org::apache::arrow::flatbuf::FloatingPoint * field_fp = nullptr;
           const org::apache::arrow::flatbuf::Decimal * field_decimal = nullptr;
@@ -138,8 +133,6 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
                   break;
               case org::apache::arrow::flatbuf::Type::Decimal:
                   field_decimal = field->type_as_Decimal();
-                  char format[32] = {0};
-                  int f_len = 0;
                   if (field_decimal->bitWidth() == 128) {
                     f_len = snprintf(format, sizeof(format) - 1, "d:%d,%d", field_decimal->precision(), field_decimal->scale());
                   } else {
@@ -244,13 +237,11 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
           }
           return ADBC_STATUS_OK;
       } else if (header_type == org::apache::arrow::flatbuf::MessageHeader::RecordBatch) {
-          std::cout << "record batch\r\n";
           struct ArrowSchema * schema = (struct ArrowSchema *)private_data;
           auto data_header = header->header_as_RecordBatch();
           auto nodes = data_header->nodes();
 
           auto buffers = data_header->buffers();
-          printf("  buffers: length=%d\r\n", buffers->size());
           int buffer_index = 0;
 
           struct ArrowArray * out = (struct ArrowArray *)out_data;
@@ -267,11 +258,9 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
               auto node = nodes->Get(i);
               auto child_schema = schema->children[i];
               
-              // ==== debug ====
-              std::cout << "    FieldNode " << i << ": " << child_schema->format << ' ' << child_schema->name << "\r\n";
-              std::cout << "      node: length=" << node->length() << ", ";
-              std::cout << "null_count=" << node->null_count() << "\r\n";
-              // ==== debug ====
+              // std::cout << "    FieldNode " << i << ": " << child_schema->format << ' ' << child_schema->name << "\r\n";
+              // std::cout << "      node: length=" << node->length() << ", ";
+              // std::cout << "null_count=" << node->null_count() << "\r\n";
 
               auto child = out->children[i];
               child->length = node->length();
@@ -283,25 +272,25 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
                   child->n_buffers = 3;
               }
               child->buffers = (const void **)malloc(sizeof(uint8_t *) * child->n_buffers);
-              printf("      child_schema->format: %s\r\n", child_schema->format);
-              printf("      child->n_buffers: %lld\r\n", child->n_buffers);
+              // printf("      child_schema->format: %s\r\n", child_schema->format);
+              // printf("      child->n_buffers: %lld\r\n", child->n_buffers);
 
-              printf("      buffer[%d]: ", buffer_index);
+              // printf("      buffer[%d]: ", buffer_index);
               auto buffer = buffers->Get(buffer_index);
-              printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
+              // printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
               child->buffers[0] = (const uint8_t *)(((uint64_t)(uint64_t*)body_data) + buffer->offset());
               buffer_index++;
 
-              printf("      buffer[%d]: ", buffer_index);
+              // printf("      buffer[%d]: ", buffer_index);
               buffer = buffers->Get(buffer_index);
-              printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
+              // printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
               child->buffers[1] = (const uint8_t *)(((uint64_t)(uint64_t*)body_data) + buffer->offset());
               buffer_index++;
 
               if (child->n_buffers == 3) {
-                  printf("      buffer[%d]: ", buffer_index);
+                  // printf("      buffer[%d]: ", buffer_index);
                   buffer = buffers->Get(buffer_index);
-                  printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
+                  // printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
                   child->buffers[2] = (const uint8_t *)(((uint64_t)(uint64_t*)body_data) + buffer->offset());
                   buffer_index++;
               }
@@ -320,12 +309,12 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
           // - Schema
           // - RecordBatch
           // - DictionaryBatch
-          std::cout << "unexpected format\r\n";
+          printf("unhandled header type: %hhu\r\n", header_type);
           return ADBC_STATUS_INTERNAL;
       }
   } else {
       // error?
-      printf("unexpected header type\r\n");
+      printf("unexpected header type: %hhu\r\n", header_type);
       return ADBC_STATUS_INTERNAL;
   }
 }
