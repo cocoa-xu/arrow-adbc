@@ -34,6 +34,155 @@
 
 namespace adbc_bigquery {
 
+static void BigQueryArrowArrayReleaseInternal(struct ArrowArray* array) {
+  // Release buffers held by this array
+  struct ArrowArrayPrivateData* private_data =
+      (struct ArrowArrayPrivateData*)array->private_data;
+  if (private_data != NULL) {
+    ArrowBitmapReset(&private_data->bitmap);
+    ArrowBufferReset(&private_data->buffers[0]);
+    ArrowBufferReset(&private_data->buffers[1]);
+    ArrowFree(private_data);
+  }
+
+  // This object owns the memory for all the children, but those
+  // children may have been generated elsewhere and might have
+  // their own release() callback.
+  if (array->children != NULL) {
+    for (int64_t i = 0; i < array->n_children; i++) {
+      if (array->children[i] != NULL) {
+        if (array->children[i]->release != NULL) {
+          ArrowArrayRelease(array->children[i]);
+        }
+
+        ArrowFree(array->children[i]);
+      }
+    }
+
+    ArrowFree(array->children);
+  }
+
+  // This object owns the memory for the dictionary but it
+  // may have been generated somewhere else and have its own
+  // release() callback.
+  if (array->dictionary != NULL) {
+    if (array->dictionary->release != NULL) {
+      ArrowArrayRelease(array->dictionary);
+    }
+
+    ArrowFree(array->dictionary);
+  }
+
+  // Mark released
+  array->release = NULL;
+}
+
+static ArrowErrorCode BigQueryArrowArraySetStorageType(struct ArrowArray* array,
+                                               enum ArrowType storage_type) {
+  switch (storage_type) {
+    case NANOARROW_TYPE_UNINITIALIZED:
+    case NANOARROW_TYPE_NA:
+      array->n_buffers = 0;
+      break;
+
+    case NANOARROW_TYPE_FIXED_SIZE_LIST:
+    case NANOARROW_TYPE_STRUCT:
+    case NANOARROW_TYPE_SPARSE_UNION:
+      array->n_buffers = 1;
+      break;
+
+    case NANOARROW_TYPE_LIST:
+    case NANOARROW_TYPE_LARGE_LIST:
+    case NANOARROW_TYPE_MAP:
+    case NANOARROW_TYPE_BOOL:
+    case NANOARROW_TYPE_UINT8:
+    case NANOARROW_TYPE_INT8:
+    case NANOARROW_TYPE_UINT16:
+    case NANOARROW_TYPE_INT16:
+    case NANOARROW_TYPE_UINT32:
+    case NANOARROW_TYPE_INT32:
+    case NANOARROW_TYPE_UINT64:
+    case NANOARROW_TYPE_INT64:
+    case NANOARROW_TYPE_HALF_FLOAT:
+    case NANOARROW_TYPE_FLOAT:
+    case NANOARROW_TYPE_DOUBLE:
+    case NANOARROW_TYPE_DECIMAL128:
+    case NANOARROW_TYPE_DECIMAL256:
+    case NANOARROW_TYPE_INTERVAL_MONTHS:
+    case NANOARROW_TYPE_INTERVAL_DAY_TIME:
+    case NANOARROW_TYPE_INTERVAL_MONTH_DAY_NANO:
+    case NANOARROW_TYPE_FIXED_SIZE_BINARY:
+    case NANOARROW_TYPE_DENSE_UNION:
+    case NANOARROW_TYPE_DATE32:
+    case NANOARROW_TYPE_DATE64:
+    case NANOARROW_TYPE_TIME32:
+    case NANOARROW_TYPE_TIME64:
+    case NANOARROW_TYPE_TIMESTAMP:
+      array->n_buffers = 2;
+      break;
+
+    case NANOARROW_TYPE_STRING:
+    case NANOARROW_TYPE_LARGE_STRING:
+    case NANOARROW_TYPE_BINARY:
+    case NANOARROW_TYPE_LARGE_BINARY:
+      array->n_buffers = 3;
+      break;
+
+    default:
+      return EINVAL;
+
+      return NANOARROW_OK;
+  }
+
+  struct ArrowArrayPrivateData* private_data =
+      (struct ArrowArrayPrivateData*)array->private_data;
+  private_data->storage_type = storage_type;
+  return NANOARROW_OK;
+}
+
+ArrowErrorCode BigQueryArrowArrayInitFromType(struct ArrowArray* array,
+                                      enum ArrowType storage_type) {
+  array->length = 0;
+  array->null_count = 0;
+  array->offset = 0;
+  array->n_buffers = 0;
+  array->n_children = 0;
+  array->buffers = NULL;
+  array->children = NULL;
+  array->dictionary = NULL;
+  array->release = &BigQueryArrowArrayReleaseInternal;
+  array->private_data = NULL;
+
+  struct ArrowArrayPrivateData* private_data =
+      (struct ArrowArrayPrivateData*)ArrowMalloc(sizeof(struct ArrowArrayPrivateData));
+  if (private_data == NULL) {
+    array->release = NULL;
+    return ENOMEM;
+  }
+
+  ArrowBitmapInit(&private_data->bitmap);
+  ArrowBufferInit(&private_data->buffers[0]);
+  ArrowBufferInit(&private_data->buffers[1]);
+  private_data->buffer_data[0] = NULL;
+  private_data->buffer_data[1] = NULL;
+  private_data->buffer_data[2] = NULL;
+
+  array->private_data = private_data;
+  array->buffers = (const void**)(&private_data->buffer_data);
+
+  int result = BigQueryArrowArraySetStorageType(array, storage_type);
+  if (result != NANOARROW_OK) {
+    ArrowArrayRelease(array);
+    return result;
+  }
+
+  ArrowLayoutInit(&private_data->layout, storage_type);
+  // We can only know this not to be true when initializing based on a schema
+  // so assume this to be true.
+  private_data->union_type_id_is_child_index = 1;
+  return NANOARROW_OK;
+}
+
 int parse_encapsulated_message(const std::string& data, org::apache::arrow::flatbuf::MessageHeader expected_header, void * out_data, void * private_data) {
   // https://arrow.apache.org/docs/format/Columnar.html#encapsulated-message-format
   if (data.length() == 0) return ADBC_STATUS_OK;
@@ -249,6 +398,7 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
 
           struct ArrowArray * out = (struct ArrowArray *)out_data;
           memset(out, 0, sizeof(struct ArrowArray));
+          ArrowArrayInitFromType(out, NANOARROW_TYPE_STRUCT);
 
           out->n_children = nodes->size();
           out->children = (struct ArrowArray **)ArrowMalloc(sizeof(struct ArrowArray *) * out->n_children);
@@ -257,44 +407,111 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
               memset(out->children[i], 0, sizeof(struct ArrowArray));
           }
 
+          static std::map<std::string, ArrowType> fixed_size_format_map = {
+            {"n", NANOARROW_TYPE_NA},
+            {"b", NANOARROW_TYPE_BOOL},
+            {"C", NANOARROW_TYPE_UINT8},
+            {"c", NANOARROW_TYPE_INT8},
+            {"S", NANOARROW_TYPE_UINT16},
+            {"s", NANOARROW_TYPE_INT16},
+            {"I", NANOARROW_TYPE_UINT32},
+            {"i", NANOARROW_TYPE_INT32},
+            {"L", NANOARROW_TYPE_UINT64},
+            {"l", NANOARROW_TYPE_INT64},
+            {"e", NANOARROW_TYPE_HALF_FLOAT},
+            {"f", NANOARROW_TYPE_FLOAT},
+            {"g", NANOARROW_TYPE_DOUBLE},
+            {"u", NANOARROW_TYPE_STRING},
+            {"z", NANOARROW_TYPE_BINARY},
+            // NANOARROW_TYPE_FIXED_SIZE_BINARY handled below
+            {"tdD", NANOARROW_TYPE_DATE32},
+            {"tdm", NANOARROW_TYPE_DATE64},
+            // NANOARROW_TYPE_TIMESTAMP handled below
+            {"tts", NANOARROW_TYPE_TIME32},
+            {"ttm", NANOARROW_TYPE_TIME32},
+            {"ttu", NANOARROW_TYPE_TIME64},
+            {"ttn", NANOARROW_TYPE_TIME64},
+            {"tiM", NANOARROW_TYPE_INTERVAL_MONTHS},
+            {"tiD", NANOARROW_TYPE_INTERVAL_DAY_TIME},
+            // NANOARROW_TYPE_DECIMAL128 handled below
+            // NANOARROW_TYPE_DECIMAL256 handled below
+            {"+l", NANOARROW_TYPE_LIST},
+            {"+s", NANOARROW_TYPE_STRUCT},
+            // NANOARROW_TYPE_SPARSE_UNION handled below
+            // NANOARROW_TYPE_DENSE_UNION handled below
+            // NANOARROW_TYPE_DICTIONARY handled below
+            {"+m", NANOARROW_TYPE_MAP},
+            // NANOARROW_TYPE_EXTENSION handled below
+            // NANOARROW_TYPE_FIXED_SIZE_LIST handled below
+            {"tDs", NANOARROW_TYPE_DURATION},
+            {"tDm", NANOARROW_TYPE_DURATION},
+            {"tDu", NANOARROW_TYPE_DURATION},
+            {"tDn", NANOARROW_TYPE_DURATION},
+            {"U", NANOARROW_TYPE_LARGE_STRING},
+            {"Z", NANOARROW_TYPE_LARGE_BINARY},
+            {"+L", NANOARROW_TYPE_LARGE_LIST},
+            {"tin", NANOARROW_TYPE_INTERVAL_MONTH_DAY_NANO}
+          };
+
           for (size_t i = 0; i < nodes->size(); i++) {
               auto node = nodes->Get(i);
               auto child_schema = schema->children[i];
-              
-              // std::cout << "    FieldNode " << i << ": " << child_schema->format << ' ' << child_schema->name << "\r\n";
-              // std::cout << "      node: length=" << node->length() << ", ";
-              // std::cout << "null_count=" << node->null_count() << "\r\n";
+              const char * format = child_schema->format;
 
               auto child = out->children[i];
+              auto map_to_type = fixed_size_format_map.find(format);
+              if (map_to_type != fixed_size_format_map.end()) {
+                BigQueryArrowArrayInitFromType(child, map_to_type->second);
+              } else {
+                int format_len = strlen(format);
+                if (format_len > 2 && format[0] == 'w' && format[1] == ':') {
+                  // NANOARROW_TYPE_FIXED_SIZE_BINARY
+                  //   w:42 - fixed-width binary [42 bytes]
+                  ArrowArrayInitFromType(child, NANOARROW_TYPE_FIXED_SIZE_BINARY);
+                } else if (format_len > 4 && format[0] == 't' && format[1] == 's' && format[3] == ':' && (format[2] == 't' || format[2] == 's' || format[2] == 'u' || format[2] == 'n')) {
+                  // NANOARROW_TYPE_TIMESTAMP
+                  //   tss:... - timestamp [seconds] with timezone “...”
+                  //   tsm:... - timestamp [milliseconds] with timezone “...”
+                  //   tsu:... - timestamp [microseconds] with timezone “...”
+                  //   tsn:... - timestamp [nanoseconds] with timezone “...”
+                  ArrowArrayInitFromType(child, NANOARROW_TYPE_TIMESTAMP);
+                } else if (format_len > 2 && format[0] == 'd' && format[1] == ':') {
+                  // NANOARROW_TYPE_DECIMAL128
+                  //   d:precision,scale - decimal with precision and scale
+                  // NANOARROW_TYPE_DECIMAL256
+                  //   d:precision,scale,256 - decimal with precision, scale, and width
+                } else if (format_len > 4 && format[0] == '+' && format[1] == 'u' && format[3] == ':' && (format[2] == 's' || format[2] == 'd')) {
+                  if (format[2] == 's') {
+                    // NANOARROW_TYPE_SPARSE_UNION
+                    //   +us:I,J,... - sparse union with types I, J, ...
+                    ArrowArrayInitFromType(child, NANOARROW_TYPE_SPARSE_UNION);
+                  } else {
+                    // NANOARROW_TYPE_DENSE_UNION
+                    //   +ud:I,J,... - dense union with types I, J, ...
+                    ArrowArrayInitFromType(child, NANOARROW_TYPE_DENSE_UNION);
+                  } 
+                } else if (format_len > 3 && format[0] == '+' && format[1] == 'w' && format[2] == ':') {
+                  // NANOARROW_TYPE_FIXED_SIZE_LIST
+                  //   +w:123 - fixed-size list with 123 elements
+                  ArrowArrayInitFromType(child, NANOARROW_TYPE_FIXED_SIZE_LIST);
+                } else {
+                  // NANOARROW_TYPE_DICTIONARY
+                  //   https://arrow.apache.org/docs/format/CDataInterface.html#dictionary-encoded-arrays
+                  // NANOARROW_TYPE_EXTENSION
+                  //   https://arrow.apache.org/docs/format/CDataInterface.html#extension-arrays
+                  printf("    Unhandled FieldNode %zu: %s %s\r\n", i, child_schema->format, child_schema->name);
+                }
+              }
               child->length = node->length();
               child->null_count = node->null_count();
-              
-              child->n_buffers = 2;
-              int format_len = strlen(child_schema->format);
-              if ((format_len == 1 && (strncmp(child_schema->format, "u", 1) == 0 || strncmp(child_schema->format, "U", 1) == 0)) || (format_len == 2 && strncmp(child_schema->format, "vu", 2) == 0)) {
-                  child->n_buffers = 3;
-              }
-              child->buffers = (const void **)ArrowMalloc(sizeof(uint8_t *) * child->n_buffers);
-              // printf("      child_schema->format: %s\r\n", child_schema->format);
-              // printf("      child->n_buffers: %lld\r\n", child->n_buffers);
+              // printf("    FieldNode %zu: %s %s\r\n", i, child_schema->format, child_schema->name);
+              // printf("      child->n_buffers %lld\r\n", child->n_buffers);
 
-              // printf("      buffer[%d]: ", buffer_index);
-              auto buffer = buffers->Get(buffer_index);
-              // printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
-              child->buffers[0] = (const uint8_t *)(((uint64_t)(uint64_t*)body_data) + buffer->offset());
-              buffer_index++;
-
-              // printf("      buffer[%d]: ", buffer_index);
-              buffer = buffers->Get(buffer_index);
-              // printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
-              child->buffers[1] = (const uint8_t *)(((uint64_t)(uint64_t*)body_data) + buffer->offset());
-              buffer_index++;
-
-              if (child->n_buffers == 3) {
-                  // printf("      buffer[%d]: ", buffer_index);
-                  buffer = buffers->Get(buffer_index);
-                  // printf("offset=%lld, length=%lld\r\n", buffer->offset(), buffer->length());
-                  child->buffers[2] = (const uint8_t *)(((uint64_t)(uint64_t*)body_data) + buffer->offset());
+              for (int fill_buffer = 0; fill_buffer < child->n_buffers; fill_buffer++) {
+                  // printf("      buffer %d: ", buffer_index);
+                  auto buffer = buffers->Get(buffer_index);
+                  // printf("offset=%lld length=%lld\r\n", buffer->offset(), buffer->length());
+                  child->buffers[fill_buffer] = (const uint8_t *)(((uint64_t)(uint64_t*)body_data) + buffer->offset());
                   buffer_index++;
               }
           }
