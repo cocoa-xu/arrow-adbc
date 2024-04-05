@@ -39,7 +39,10 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
   if (data.length() == 0) return ADBC_STATUS_OK;
 
   uintptr_t * data_ptr = (uintptr_t *)data.data();
+
+  // A 32-bit continuation indicator. The value 0xFFFFFFFF indicates a valid message.
   bool continuation = *(uint32_t *)data_ptr == 0xFFFFFFFF;
+  if (!continuation) return ADBC_STATUS_INVALID_DATA;
   data_ptr = (uintptr_t *)(((uint64_t)(uint64_t *)data_ptr) + 4);
 
   // metadata_size:
