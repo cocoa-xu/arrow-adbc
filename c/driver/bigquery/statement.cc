@@ -251,9 +251,9 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
           memset(out, 0, sizeof(struct ArrowArray));
 
           out->n_children = nodes->size();
-          out->children = (struct ArrowArray **)malloc(sizeof(struct ArrowArray *) * out->n_children);
+          out->children = (struct ArrowArray **)ArrowMalloc(sizeof(struct ArrowArray *) * out->n_children);
           for (size_t i = 0; i < nodes->size(); i++) {
-              out->children[i] = (struct ArrowArray *)malloc(sizeof(struct ArrowArray));
+              out->children[i] = (struct ArrowArray *)ArrowMalloc(sizeof(struct ArrowArray));
               memset(out->children[i], 0, sizeof(struct ArrowArray));
           }
 
@@ -274,7 +274,7 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
               if ((format_len == 1 && (strncmp(child_schema->format, "u", 1) == 0 || strncmp(child_schema->format, "U", 1) == 0)) || (format_len == 2 && strncmp(child_schema->format, "vu", 2) == 0)) {
                   child->n_buffers = 3;
               }
-              child->buffers = (const void **)malloc(sizeof(uint8_t *) * child->n_buffers);
+              child->buffers = (const void **)ArrowMalloc(sizeof(uint8_t *) * child->n_buffers);
               // printf("      child_schema->format: %s\r\n", child_schema->format);
               // printf("      child->n_buffers: %lld\r\n", child->n_buffers);
 
@@ -367,13 +367,14 @@ int ReadRowsIterator::get_next(struct ArrowArrayStream* stream, struct ArrowArra
 
   struct ArrowSchema * parsed_schema = nullptr;
   if (iterator->parsed_schema_ == nullptr) {
-    parsed_schema = (struct ArrowSchema *)malloc(sizeof(struct ArrowSchema));
+    parsed_schema = (struct ArrowSchema *)ArrowMalloc(sizeof(struct ArrowSchema));
     memset(parsed_schema, 0, sizeof(struct ArrowSchema));
     
     int ret = iterator->get_schema(stream, parsed_schema);
     if (ret != ADBC_STATUS_OK) {
       return ret;
     }
+    ArrowFree(parsed_schema);
   }
 
   auto& serialized_record_batch = row->arrow_record_batch().serialized_record_batch();
@@ -382,8 +383,8 @@ int ReadRowsIterator::get_next(struct ArrowArrayStream* stream, struct ArrowArra
   return parse_encapsulated_message(
     serialized_record_batch, 
     org::apache::arrow::flatbuf::MessageHeader::RecordBatch, 
-    out, 
-    parsed_schema);
+    out,
+    iterator->parsed_schema_);
 }
 
 int ReadRowsIterator::get_schema(struct ArrowArrayStream* stream, struct ArrowSchema* out) {
@@ -413,7 +414,7 @@ int ReadRowsIterator::get_schema(struct ArrowArrayStream* stream, struct ArrowSc
   if (ret != ADBC_STATUS_OK) {
     return ret;
   } else {
-    iterator->parsed_schema_ = (struct ArrowSchema *)malloc(sizeof(struct ArrowSchema));
+    iterator->parsed_schema_ = (struct ArrowSchema *)ArrowMalloc(sizeof(struct ArrowSchema));
     memcpy(iterator->parsed_schema_, out, sizeof(struct ArrowSchema));
   }
 
@@ -425,7 +426,7 @@ void ReadRowsIterator::release(struct ArrowArrayStream* stream) {
     auto* ptr = reinterpret_cast<std::shared_ptr<ReadRowsIterator>*>(stream->private_data);
     if (ptr) {
       if ((*ptr)->parsed_schema_) {
-        free((*ptr)->parsed_schema_);
+        ArrowFree((*ptr)->parsed_schema_);
         (*ptr)->parsed_schema_ = nullptr;
       }
       delete ptr;
