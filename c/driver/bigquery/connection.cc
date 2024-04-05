@@ -34,7 +34,7 @@ AdbcStatusCode BigqueryConnection::Commit(struct AdbcError* error) {
 }
 
 AdbcStatusCode BigqueryConnection::GetInfo(struct AdbcConnection* connection,
-                                           const uint32_t* info_codes, 
+                                           const uint32_t* info_codes,
                                            size_t info_codes_length,
                                            struct ArrowArrayStream* out,
                                            struct AdbcError* error) {
@@ -54,7 +54,8 @@ AdbcStatusCode BigqueryConnection::GetOption(const char* option, char* value,
 }
 
 AdbcStatusCode BigqueryConnection::GetOptionBytes(const char* option, uint8_t* value,
-                                                  size_t* length, struct AdbcError* error) {
+                                                  size_t* length,
+                                                  struct AdbcError* error) {
   return ADBC_STATUS_NOT_FOUND;
 }
 
@@ -70,8 +71,7 @@ AdbcStatusCode BigqueryConnection::GetOptionInt(const char* option, int64_t* val
 
 AdbcStatusCode BigqueryConnection::GetStatistics(const char* catalog,
                                                  const char* db_schema,
-                                                 const char* table_name,
-                                                 bool approximate,
+                                                 const char* table_name, bool approximate,
                                                  struct ArrowArrayStream* out,
                                                  struct AdbcError* error) {
   return ADBC_STATUS_NOT_IMPLEMENTED;
@@ -121,7 +121,8 @@ AdbcStatusCode BigqueryConnection::SetOption(const char* key, const char* value,
 }
 
 AdbcStatusCode BigqueryConnection::SetOptionBytes(const char* key, const uint8_t* value,
-                                                  size_t length, struct AdbcError* error) {
+                                                  size_t length,
+                                                  struct AdbcError* error) {
   return ADBC_STATUS_NOT_IMPLEMENTED;
 }
 

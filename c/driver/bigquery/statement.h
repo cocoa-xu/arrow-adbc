@@ -33,11 +33,13 @@ class BigqueryStatement;
 
 class ReadRowsIterator {
  public:
-  using ReadRowsResponse = ::google::cloud::StreamRange<::google::cloud::bigquery::storage::v1::ReadRowsResponse>;
-  using ReadSession = std::shared_ptr<::google::cloud::bigquery::storage::v1::ReadSession>;
+  using ReadRowsResponse = ::google::cloud::StreamRange<
+      ::google::cloud::bigquery::storage::v1::ReadRowsResponse>;
+  using ReadSession =
+      std::shared_ptr<::google::cloud::bigquery::storage::v1::ReadSession>;
 
-  ReadRowsIterator(const std::string& project_name, const std::string& table_name) 
-      : project_name_(project_name), table_name_(table_name)  {}
+  ReadRowsIterator(const std::string& project_name, const std::string& table_name)
+      : project_name_(project_name), table_name_(table_name) {}
 
   AdbcStatusCode init(struct AdbcError* error);
 
@@ -50,7 +52,8 @@ class ReadRowsIterator {
  protected:
   std::string project_name_;
   std::string table_name_;
-  decltype(::google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection()) connection_;
+  decltype(::google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection())
+      connection_;
   std::shared_ptr<::google::cloud::bigquery_storage_v1::BigQueryReadClient> client_;
   std::shared_ptr<::google::cloud::bigquery::storage::v1::ReadSession> session_;
   std::shared_ptr<ReadRowsResponse> response_;
@@ -61,9 +64,8 @@ class ReadRowsIterator {
 
 class BigqueryStatement {
  public:
-  BigqueryStatement() 
-      : connection_(nullptr) {}
-  
+  BigqueryStatement() : connection_(nullptr) {}
+
   // ---------------------------------------------------------------------
   // ADBC API implementation
 

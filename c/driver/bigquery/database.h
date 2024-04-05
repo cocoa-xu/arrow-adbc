@@ -29,8 +29,7 @@ class BigqueryConnection;
 class BigqueryStatement;
 class BigqueryDatabase {
  public:
-  BigqueryDatabase()
-      : project_name_(""), table_name_("") {};
+  BigqueryDatabase() : project_name_(""), table_name_(""){};
   ~BigqueryDatabase();
 
   // Public ADBC API

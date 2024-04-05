@@ -28,8 +28,7 @@ class BigqueryDatabase;
 class BigqueryStatement;
 class BigqueryConnection {
  public:
-  BigqueryConnection()
-      : database_(nullptr) {}
+  BigqueryConnection() : database_(nullptr) {}
 
   AdbcStatusCode Cancel(struct AdbcError* error);
   AdbcStatusCode Commit(struct AdbcError* error);
@@ -70,6 +69,6 @@ class BigqueryConnection {
   friend class BigqueryStatement;
 
  protected:
-  std::shared_ptr<BigqueryDatabase> database_;  
+  std::shared_ptr<BigqueryDatabase> database_;
 };
 }  // namespace adbc_bigquery
