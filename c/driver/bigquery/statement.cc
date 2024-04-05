@@ -67,6 +67,7 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
               std::cout << "type=" << org::apache::arrow::flatbuf::EnumNameType(field->type_type()) << "\r\n";
           }
 
+          // https://arrow.apache.org/docs/format/CDataInterface.html#data-type-description-format-strings
           struct ArrowSchema * out = (struct ArrowSchema *)out_data;
           ArrowSchemaInit(out);
           out->name = nullptr;
@@ -77,6 +78,9 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
           const org::apache::arrow::flatbuf::Decimal * field_decimal = nullptr;
           const org::apache::arrow::flatbuf::Date * field_date = nullptr;
           const org::apache::arrow::flatbuf::Time * field_time = nullptr;
+          const org::apache::arrow::flatbuf::Interval * field_interval = nullptr;
+          // const org::apache::arrow::flatbuf::Struct_ * field_struct = nullptr;
+          const org::apache::arrow::flatbuf::Union * field_union = nullptr;
           for (size_t i = 0; i < fields->size(); i++) {
               auto field = fields->Get(i);
               auto child = out->children[i];
@@ -133,13 +137,16 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
                   ArrowSchemaSetType(child, NANOARROW_TYPE_BOOL);
                   break;
               case org::apache::arrow::flatbuf::Type::Decimal:
-                  // TODO_BIGQUERY: generate a format string for decimal based on precision and scale
                   field_decimal = field->type_as_Decimal();
+                  char format[32] = {0};
+                  int f_len = 0;
                   if (field_decimal->bitWidth() == 128) {
-                    ArrowSchemaSetType(child, NANOARROW_TYPE_DECIMAL128);
-                  } else if (field_decimal->bitWidth() == 256) {
-                    ArrowSchemaSetType(child, NANOARROW_TYPE_DECIMAL256);
+                    f_len = snprintf(format, sizeof(format) - 1, "d:%d,%d", field_decimal->precision(), field_decimal->scale());
+                  } else {
+                    f_len = snprintf(format, sizeof(format) - 1, "d:%d,%d,%d", field_decimal->precision(), field_decimal->scale(), field_decimal->bitWidth());
                   }
+                  // TODO_BIGQUERY: free child->format in release function
+                  child->format = (char *)strndup(format, f_len);
                   break;
               case org::apache::arrow::flatbuf::Type::Date:
                   field_date = field->type_as_Date();
@@ -169,24 +176,30 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
                   ArrowSchemaSetType(child, NANOARROW_TYPE_TIMESTAMP);
                   break;
               case org::apache::arrow::flatbuf::Type::Interval:
-                  // TODO_BIGQUERY:
-                  // NANOARROW_TYPE_INTERVAL_MONTHS?
-                  // NANOARROW_TYPE_INTERVAL_DAY_TIME?
-                  // NANOARROW_TYPE_INTERVAL_MONTH_DAY_NANO?
-                  ArrowSchemaSetType(child, NANOARROW_TYPE_INTERVAL_DAY_TIME);
+                  field_interval = field->type_as_Interval();
+                  if (field_interval->unit() == org::apache::arrow::flatbuf::IntervalUnit::YEAR_MONTH) {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_INTERVAL_MONTHS);
+                  } else if (field_interval->unit() == org::apache::arrow::flatbuf::IntervalUnit::DAY_TIME) {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_INTERVAL_DAY_TIME);
+                  } else {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_INTERVAL_MONTH_DAY_NANO);
+                  }
                   break;
               case org::apache::arrow::flatbuf::Type::List:
                   ArrowSchemaSetType(child, NANOARROW_TYPE_LIST);
                   break;
               case org::apache::arrow::flatbuf::Type::Struct_:
                   // TODO_BIGQUERY: recursively parse struct?
+                  // field_struct = field->type_as_Struct_();
                   ArrowSchemaSetType(child, NANOARROW_TYPE_STRUCT);
                   break;
               case org::apache::arrow::flatbuf::Type::Union:
-                  // TODO_BIGQUERY:
-                  // NANOARROW_TYPE_SPARSE_UNION?
-                  // NANOARROW_TYPE_DENSE_UNION?
-                  ArrowSchemaSetType(child, NANOARROW_TYPE_SPARSE_UNION);
+                  field_union = field->type_as_Union();
+                  if (field_union->mode() == org::apache::arrow::flatbuf::UnionMode::Sparse) {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_SPARSE_UNION);
+                  } else {
+                    ArrowSchemaSetType(child, NANOARROW_TYPE_DENSE_UNION);
+                  }
                   break;
               case org::apache::arrow::flatbuf::Type::FixedSizeBinary:
                   ArrowSchemaSetType(child, NANOARROW_TYPE_FIXED_SIZE_BINARY);
@@ -210,13 +223,8 @@ int parse_encapsulated_message(const std::string& data, org::apache::arrow::flat
                   ArrowSchemaSetType(child, NANOARROW_TYPE_LARGE_LIST);
                   break;
               case org::apache::arrow::flatbuf::Type::RunEndEncoded:
-                  // no idea which type may correspond to this
-                  // but according to the spec, the format string is "+r"
                   child->format = "+r";
                   break;
-              
-              // not quite sure which type(s) the following *View types correspond to
-              // but they do appear on the specs, and have a format string associated
               case org::apache::arrow::flatbuf::Type::BinaryView:
                   child->format = "vz";
                   break;
