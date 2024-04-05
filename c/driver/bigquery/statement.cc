@@ -356,7 +356,7 @@ int parse_encapsulated_message(const std::string& data,
             break;
           case org::apache::arrow::flatbuf::Type::Struct_:
             // TODO_BIGQUERY: how do I get its children?
-            field_struct = field->type_as_Struct_();
+            // field_struct = field->type_as_Struct_();
             ArrowSchemaSetTypeStruct(child, 1);
             break;
           case org::apache::arrow::flatbuf::Type::Union:
@@ -653,7 +653,6 @@ int ReadRowsIterator::get_next(struct ArrowArrayStream* stream, struct ArrowArra
   }
 
   auto& serialized_record_batch = row->arrow_record_batch().serialized_record_batch();
-  // printf("serialized_record_batch: length=%zu\r\n", serialized_record_batch.length());
   iterator->current_++;
   return parse_encapsulated_message(
       serialized_record_batch, org::apache::arrow::flatbuf::MessageHeader::RecordBatch,
