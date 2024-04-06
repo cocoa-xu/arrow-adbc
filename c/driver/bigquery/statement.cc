@@ -726,9 +726,9 @@ AdbcStatusCode BigqueryStatement::Cancel(struct AdbcError* error) {
 AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ::ArrowArrayStream* stream,
                                                int64_t* rows_affected,
                                                struct AdbcError* error) {
+  // TODO_BIGQUERY: start a job
   if (stream) {
-    auto iterator = std::make_shared<ReadRowsIterator>(
-        connection_->database_->project_name_, connection_->database_->table_name_);
+    auto iterator = std::make_shared<ReadRowsIterator>("", "");
     int ret = iterator->init(error);
     if (ret != ADBC_STATUS_OK) {
       return ret;
@@ -779,12 +779,6 @@ AdbcStatusCode BigqueryStatement::GetParameterSchema(struct ArrowSchema* schema,
 
 AdbcStatusCode BigqueryStatement::New(struct AdbcConnection* connection,
                                       struct AdbcError* error) {
-  if (!connection || !connection->private_data) {
-    SetError(error, "%s", "[bigquery] Must provide an initialized AdbcConnection");
-    return ADBC_STATUS_INVALID_ARGUMENT;
-  }
-  connection_ =
-      *reinterpret_cast<std::shared_ptr<BigqueryConnection>*>(connection->private_data);
   return ADBC_STATUS_OK;
 }
 

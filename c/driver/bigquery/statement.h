@@ -64,7 +64,7 @@ class ReadRowsIterator {
 
 class BigqueryStatement {
  public:
-  BigqueryStatement() : connection_(nullptr) {}
+  BigqueryStatement(){}
 
   // ---------------------------------------------------------------------
   // ADBC API implementation
@@ -92,8 +92,5 @@ class BigqueryStatement {
   AdbcStatusCode SetOptionDouble(const char* key, double value, struct AdbcError* error);
   AdbcStatusCode SetOptionInt(const char* key, int64_t value, struct AdbcError* error);
   AdbcStatusCode SetSqlQuery(const char* query, struct AdbcError* error);
-
- private:
-  std::shared_ptr<BigqueryConnection> connection_;
 };
 }  // namespace adbc_bigquery

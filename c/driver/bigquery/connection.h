@@ -24,11 +24,9 @@
 #include <google/cloud/bigquery/storage/v1/bigquery_read_client.h>
 
 namespace adbc_bigquery {
-class BigqueryDatabase;
-class BigqueryStatement;
 class BigqueryConnection {
  public:
-  BigqueryConnection() : database_(nullptr) {}
+  BigqueryConnection(){}
 
   AdbcStatusCode Cancel(struct AdbcError* error);
   AdbcStatusCode Commit(struct AdbcError* error);
@@ -65,10 +63,5 @@ class BigqueryConnection {
                                 struct AdbcError* error);
   AdbcStatusCode SetOptionDouble(const char* key, double value, struct AdbcError* error);
   AdbcStatusCode SetOptionInt(const char* key, int64_t value, struct AdbcError* error);
-
-  friend class BigqueryStatement;
-
- protected:
-  std::shared_ptr<BigqueryDatabase> database_;
 };
 }  // namespace adbc_bigquery
