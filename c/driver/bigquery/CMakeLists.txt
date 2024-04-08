@@ -170,6 +170,7 @@ add_arrow_lib(adbc_driver_bigquery
               connection.cc
               database.cc
               statement.cc
+              readrowsiterator.cc
               OUTPUTS
               ADBC_LIBRARIES
               CMAKE_PACKAGE_NAME

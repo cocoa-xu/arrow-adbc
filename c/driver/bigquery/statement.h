@@ -23,45 +23,10 @@
 #include <string>
 
 #include <adbc.h>
-#include <google/cloud/bigquery/storage/v1/bigquery_read_client.h>
 
 #include "common/utils.h"
 
 namespace adbc_bigquery {
-class BigqueryConnection;
-class BigqueryStatement;
-
-class ReadRowsIterator {
- public:
-  using ReadRowsResponse = ::google::cloud::StreamRange<
-      ::google::cloud::bigquery::storage::v1::ReadRowsResponse>;
-  using ReadSession =
-      std::shared_ptr<::google::cloud::bigquery::storage::v1::ReadSession>;
-
-  ReadRowsIterator(const std::string& project_name, const std::string& table_name)
-      : project_name_(project_name), table_name_(table_name) {}
-
-  AdbcStatusCode init(struct AdbcError* error);
-
-  friend class BigqueryStatement;
-
-  static int get_next(struct ArrowArrayStream* stream, struct ArrowArray* error);
-  static int get_schema(struct ArrowArrayStream* stream, struct ArrowSchema* error);
-  static void release(struct ArrowArrayStream* stream);
-
- protected:
-  std::string project_name_;
-  std::string table_name_;
-  decltype(::google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection())
-      connection_;
-  std::shared_ptr<::google::cloud::bigquery_storage_v1::BigQueryReadClient> client_;
-  std::shared_ptr<::google::cloud::bigquery::storage::v1::ReadSession> session_;
-  std::shared_ptr<ReadRowsResponse> response_;
-  ReadRowsResponse::iterator current_;
-
-  struct ArrowSchema* parsed_schema_ = nullptr;
-};
-
 class BigqueryStatement {
  public:
   BigqueryStatement(){}
