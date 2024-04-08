@@ -25,11 +25,11 @@ endif()
 
 # == Generated checksum ==
 set(BIGQUERY_VERSION_WITH_HASH "2.22.0")
-set(BIGQUERY_HASH_X86_64_APPLE_DARWIN "3231df21a28fded397d7db06d9e54a8de92bd4f832f8c6329486647504c9bd79")
-set(BIGQUERY_HASH_AARCH64_APPLE_DARWIN "e3c5eb38f783b987da0b9faef9d4ace3de6e35fd1a7a97f4a5bb56f1bf36a309")
-set(BIGQUERY_HASH_X86_64_LINUX_GNU "5706de6b4dcce5d2f3314c670c053b42d8f4640cbc6a2642a3730b57f1f577f5")
+set(BIGQUERY_HASH_X86_64_APPLE_DARWIN "83f1e647acb6f78f130652ad3af3680cd3d80af413cd1f654f563effd4b7540a")
+set(BIGQUERY_HASH_AARCH64_APPLE_DARWIN "e823fbc0ea5fa71d13b921083e697ddf96ead29a70142eef2b51f3d2c454d122")
+set(BIGQUERY_HASH_X86_64_LINUX_GNU "500e6880f1eb1bdd1f93c3cf727d55b42aa7d8373873e3bbdbdcd67457179318")
 set(BIGQUERY_HASH_AARCH64_LINUX_GNU "21d92d3e0dac58791fcc533289155ccae4cc0ff23e6bf633447f77247bd9b221")
-set(BIGQUERY_HASH_X86_64_WINDOWS_MSVC "b857d9b92e7d5ff85636b73c5fb30e8d3d05b3842bfa1dd0e75ccbfa9cd5bb2b")
+set(BIGQUERY_HASH_X86_64_WINDOWS_MSVC "6651151d6b06865fa701aeef7eaf8d8b89730e3853ce8ee02c771b697c020b80")
 # == Generated checksum ==
 
 if(NOT DEFINED BIGQUERY_VERSION OR "${BIGQUERY_VERSION}" STREQUAL "")
@@ -138,7 +138,8 @@ set(BIGQUERY_INCLUDE_DIRS "${BIGQUERY_INSTALL_PREFIX}/include")
 find_package(OpenSSL REQUIRED)
 find_package(Arrow REQUIRED)
 find_package(google_cloud_cpp_bigquery REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
-set(BIGQUERY_LINK_LIBRARIES google-cloud-cpp::bigquery Arrow::arrow_static)
+find_package(google_cloud_cpp_bigquery_rest REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
+set(BIGQUERY_LINK_LIBRARIES google-cloud-cpp::bigquery google-cloud-cpp::experimental-bigquery_rest Arrow::arrow_static)
 
 if(NOT DEFINED ADBC_DRIVER_BIGQUERY_ENDIAN)
   if(CMAKE_VERSION VERSION_LESS "3.20.0")
@@ -189,88 +190,13 @@ add_arrow_lib(adbc_driver_bigquery
               nanoarrow
               ${BIGQUERY_LINK_LIBRARIES})
 
-include(FetchContent)
-FetchContent_Declare(
-  flatbuffers
-  GIT_REPOSITORY https://github.com/google/flatbuffers.git
-  GIT_TAG        v24.3.25
-)
-FetchContent_GetProperties(flatbuffers)
-if(NOT flatbuffers_POPULATED)
-  FetchContent_Populate(flatbuffers)
-endif()
-set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "")
-set(FLATBUFFERS_INSTALL OFF CACHE BOOL "")
-set(FLATBUFFERS_BUILD_FLATLIB OFF CACHE BOOL "")
-add_subdirectory(${flatbuffers_SOURCE_DIR} ${flatbuffers_BINARY_DIR})
-
-if(NOT EXISTS ${CMAKE_CURRENT_LIST_DIR}/include/arrow)
-  file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/arrow)
-endif()
-
-if(NOT EXISTS ${CMAKE_CURRENT_LIST_DIR}/format)
-  file(MAKE_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/format)
-endif()
-
-function(flatc_generate_header_files fbs_filenames fbs_sha256_checksums)
-  set(FLATC_GENERATED_TARGETS "")
-  foreach(fbs checksum IN ZIP_LISTS fbs_filenames fbs_sha256_checksums)
-    set(LOCAL_FBS_FILENAME ${CMAKE_CURRENT_LIST_DIR}/format/${fbs}.fbs)
-    if(NOT EXISTS "${LOCAL_FBS_FILENAME}")
-      set(ARROW_PROTOCOL_FILE_BASE_URL "https://raw.githubusercontent.com/apache/arrow/apache-arrow-15.0.2/format")
-      file(DOWNLOAD
-        "${ARROW_PROTOCOL_FILE_BASE_URL}/${fbs}.fbs"
-        "${LOCAL_FBS_FILENAME}"
-        INACTIVITY_TIMEOUT 300
-        SHOW_PROGRESS
-        EXPECTED_HASH SHA256=${checksum}
-      )
-    endif()
-
-    list(APPEND FLATC_GENERATED_TARGETS "flatc_generate_${fbs}")
-    if(WIN32)
-      set(FLATC_EXECUTABLE ${flatbuffers_BINARY_DIR}/${CMAKE_BUILD_TYPE}/flatc.exe)
-    else()
-      set(FLATC_EXECUTABLE ${flatbuffers_BINARY_DIR}/flatc)
-    endif()
-    add_custom_target(
-      flatc_generate_${fbs} ${FLATC_EXECUTABLE} --no-warnings --cpp --cpp-std c++17 ${CMAKE_CURRENT_LIST_DIR}/format/${fbs}.fbs
-      BYPRODUCTS ${CMAKE_CURRENT_LIST_DIR}/include/arrow/${fbs}_generated.h
-      DEPENDS flatc ${CMAKE_CURRENT_LIST_DIR}/format/${fbs}.fbs
-      WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}/include/arrow
-    )
-  endforeach()
-  set(FLATC_GENERATED_TARGETS ${FLATC_GENERATED_TARGETS} PARENT_SCOPE)
-endfunction(flatc_generate_header_files)
-
-set(FBS_FILES "")
-set(FBS_FILE_SHA256_CHECKSUMS "")
-# Message.fbs
-list(APPEND FBS_FILES Message)
-list(APPEND FBS_FILE_SHA256_CHECKSUMS "32a1464cede1b90d1351faf65726d465d95fbf3a85bd96e2d7222ac979fe20e4")
-# Schema.fbs
-list(APPEND FBS_FILES Schema)
-list(APPEND FBS_FILE_SHA256_CHECKSUMS "34de85517cea535db69c5aeb7e486b331a31bb5a8acf1433099430feab2570df")
-# SparseTensor.fbs
-list(APPEND FBS_FILES SparseTensor)
-list(APPEND FBS_FILE_SHA256_CHECKSUMS "4a340d4ed601fb1c3cb1d60c2bdb139bffa446c0f2c7d7e9fde5a28949075266")
-# Tensor.fbs
-list(APPEND FBS_FILES Tensor)
-list(APPEND FBS_FILE_SHA256_CHECKSUMS "0ea5297a55f8ad00b125a98314f616c2c6249351bdbfea8f429913255b2a07f7")
-flatc_generate_header_files("${FBS_FILES}" "${FBS_FILE_SHA256_CHECKSUMS}")
-
 foreach(LIB_TARGET ${ADBC_LIBRARIES})
-  if(FLATC_GENERATED_TARGETS)
-    add_dependencies(${LIB_TARGET} ${FLATC_GENERATED_TARGETS})
-  endif()
   target_compile_definitions(${LIB_TARGET} PRIVATE ADBC_EXPORTING "${ADBC_DRIVER_BIGQUERY_ENDIAN_DEF}")
 
   target_include_directories(${LIB_TARGET} SYSTEM
                              PRIVATE ${REPOSITORY_ROOT}
                                      ${REPOSITORY_ROOT}/c/
                                      ${BIGQUERY_INCLUDE_DIRS}
-                                     ${flatbuffers_SOURCE_DIR}/include
-                                     ${CMAKE_CURRENT_LIST_DIR}/include
                                      ${REPOSITORY_ROOT}/c/vendor
                                      ${REPOSITORY_ROOT}/c/driver)
 endforeach()
@@ -299,7 +225,6 @@ if(ADBC_BUILD_TESTS)
                              PRIVATE ${REPOSITORY_ROOT}
                                      ${REPOSITORY_ROOT}/c/
                                      ${BIGQUERY_INCLUDE_DIRS}
-                                     ${flatbuffers_SOURCE_DIR}/include
                                      ${REPOSITORY_ROOT}/c/vendor
                                      ${REPOSITORY_ROOT}/c/driver)
   adbc_configure_target(adbc-driver-bigquery-test)

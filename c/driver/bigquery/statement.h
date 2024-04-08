@@ -20,16 +20,21 @@
 #include <cinttypes>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
 
 #include <adbc.h>
+#include "connection.h"
 
 #include "common/utils.h"
 
 namespace adbc_bigquery {
+class BigqueryConnection;
+
 class BigqueryStatement {
  public:
-  BigqueryStatement(){}
+  BigqueryStatement() {}
 
   // ---------------------------------------------------------------------
   // ADBC API implementation
@@ -57,5 +62,56 @@ class BigqueryStatement {
   AdbcStatusCode SetOptionDouble(const char* key, double value, struct AdbcError* error);
   AdbcStatusCode SetOptionInt(const char* key, int64_t value, struct AdbcError* error);
   AdbcStatusCode SetSqlQuery(const char* query, struct AdbcError* error);
+
+  template <typename T = std::string>
+  auto GetQueryRequestOption(const char* key) -> std::optional<T> {
+    auto iter = options_.find(key);
+    if (iter == options_.end()) {
+      return {};
+    } else {
+      return handleOptionValue<T>(iter->second);
+    }
+  }
+
+  template <typename T>
+  auto GetQueryRequestOption(const char* key, T default_value) -> T {
+    auto iter = options_.find(key);
+    if (iter == options_.end()) {
+      return default_value;
+    } else {
+      return handleOptionValue<T>(iter->second);
+    }
+  }
+
+  template <typename T = std::string>
+  auto handleOptionValue(const std::string& value) -> T {
+    return T{};
+  }
+
+  template <>
+  auto handleOptionValue<bool>(const std::string& value) -> bool {
+    if (value == "true") {
+      return true;
+    } else if (value == "false") {
+      return false;
+    } else {
+      return false;
+    }
+  }
+
+  template <>
+  auto handleOptionValue<std::uint32_t>(const std::string& value) -> std::uint32_t {
+    return strtoul(value.c_str(), nullptr, 10);
+  }
+
+  template <>
+  auto handleOptionValue<std::int64_t>(const std::string& value) -> std::int64_t {
+    return strtoll(value.c_str(), nullptr, 10);
+  }
+
+ private:
+  std::shared_ptr<BigqueryConnection> connection_;
+  std::string sql_;
+  std::unordered_map<std::string, std::string> options_;
 };
 }  // namespace adbc_bigquery

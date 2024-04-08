@@ -21,12 +21,14 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <string_view>
 
 #include <adbc.h>
 #include <arrow/ipc/reader.h>
 #include <google/cloud/bigquery/storage/v1/bigquery_read_client.h>
 
 #include "common/utils.h"
+#include "inputstream.h"
 
 namespace adbc_bigquery {
 
@@ -37,10 +39,10 @@ class ReadRowsIterator {
   using ReadSession =
       std::shared_ptr<::google::cloud::bigquery::storage::v1::ReadSession>;
 
-  ReadRowsIterator(const std::string& project_name, const std::string& table_name)
-      : project_name_(project_name), table_name_(table_name) {}
+  ReadRowsIterator() {}
 
   AdbcStatusCode init(struct AdbcError* error);
+  AdbcStatusCode read_next();
 
   friend class BigqueryStatement;
 
@@ -49,8 +51,9 @@ class ReadRowsIterator {
   static void release(struct ArrowArrayStream* stream);
 
  protected:
-  std::string project_name_;
-  std::string table_name_;
+  std::string project_name_ = "projects/bigquery-poc-418913";
+  std::string table_name_ =
+      "projects/bigquery-poc-418913/datasets/google_trends/tables/small_top_terms";
   decltype(::google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection())
       connection_;
   std::shared_ptr<::google::cloud::bigquery_storage_v1::BigQueryReadClient> client_;
@@ -58,7 +61,14 @@ class ReadRowsIterator {
   std::shared_ptr<ReadRowsResponse> response_;
   ReadRowsResponse::iterator current_;
 
+  std::string_view serialized_schema_;
+  std::string_view serialized_record_batch_;
+  std::shared_ptr<adbc_bigquery::InputStream> input_stream_;
+  std::shared_ptr<arrow::ipc::RecordBatchStreamReader> reader_;
+  std::shared_ptr<arrow::RecordBatch> record_batch;
+
   struct ArrowSchema* parsed_schema_ = nullptr;
+  struct ArrowArray* parsed_array_ = nullptr;
 };
 
 }  // namespace adbc_bigquery

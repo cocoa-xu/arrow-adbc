@@ -18,12 +18,16 @@
 #include "connection.h"
 
 #include <adbc.h>
-#include <google/cloud/bigquery/storage/v1/bigquery_read_client.h>
 
 #include "common/utils.h"
 #include "database.h"
 
 namespace adbc_bigquery {
+
+const char* const BigqueryConnection::kInfoDriverName = "ADBC BigQuery Driver";
+const char* const BigqueryConnection::kInfoDriverVersion = "1.0.0";
+const char* const BigqueryConnection::kInfoVendorName = "BigQuery";
+const char* const BigqueryConnection::kInfoDriverArrowVersion = "1.0.0";
 
 AdbcStatusCode BigqueryConnection::Cancel(struct AdbcError* error) {
   return ADBC_STATUS_NOT_IMPLEMENTED;
@@ -38,6 +42,17 @@ AdbcStatusCode BigqueryConnection::GetInfo(struct AdbcConnection* connection,
                                            size_t info_codes_length,
                                            struct ArrowArrayStream* out,
                                            struct AdbcError* error) {
+  // if (info_codes_length == 0) {
+  //   static uint32_t info_codes_static[] = {
+  //     ADBC_INFO_DRIVER_NAME,
+  //     ADBC_INFO_DRIVER_VERSION,
+  //     ADBC_INFO_DRIVER_ARROW_VERSION,
+  //     ADBC_INFO_VENDOR_NAME
+  //   };
+  //   info_codes = info_codes_static;
+  //   info_codes_length = sizeof(info_codes_static) / sizeof(info_codes_static[0]);
+  // }
+
   return ADBC_STATUS_NOT_FOUND;
 }
 
@@ -98,6 +113,12 @@ AdbcStatusCode BigqueryConnection::GetTableTypes(struct AdbcConnection* connecti
 
 AdbcStatusCode BigqueryConnection::Init(struct AdbcDatabase* database,
                                         struct AdbcError* error) {
+  if (!database || !database->private_data) {
+    SetError(error, "[libpq] Must provide an initialized AdbcDatabase");
+    return ADBC_STATUS_INVALID_ARGUMENT;
+  }
+  database_ =
+      *reinterpret_cast<std::shared_ptr<BigqueryDatabase>*>(database->private_data);
   return ADBC_STATUS_OK;
 }
 

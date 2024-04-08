@@ -22,9 +22,10 @@
 #include <string>
 
 #include <adbc.h>
-#include <google/cloud/bigquery/storage/v1/bigquery_read_client.h>
 
 namespace adbc_bigquery {
+class BigqueryConnection;
+
 class BigqueryDatabase {
  public:
   BigqueryDatabase(){};
@@ -47,6 +48,13 @@ class BigqueryDatabase {
                                 struct AdbcError* error);
   AdbcStatusCode SetOptionDouble(const char* key, double value, struct AdbcError* error);
   AdbcStatusCode SetOptionInt(const char* key, int64_t value, struct AdbcError* error);
+
+  std::string project_id() const { return project_id_; }
+
+  friend class BigqueryConnection;
+
+ protected:
+  std::string project_id_;
 };
 }  // namespace adbc_bigquery
 

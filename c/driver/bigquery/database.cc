@@ -19,14 +19,8 @@
 
 #include <cinttypes>
 #include <cstring>
-#include <memory>
-#include <utility>
-#include <vector>
 
-#include <absl/log/initialize.h>
 #include <adbc.h>
-#include <google/cloud/bigquery/storage/v1/bigquery_read_client.h>
-#include <nanoarrow/nanoarrow.h>
 
 #include "common/utils.h"
 
@@ -59,6 +53,10 @@ AdbcStatusCode BigqueryDatabase::Release(struct AdbcError* error) {
 
 AdbcStatusCode BigqueryDatabase::SetOption(const char* key, const char* value,
                                            struct AdbcError* error) {
+  if (strcmp(key, "project_id") == 0) {
+    project_id_ = value;
+    return ADBC_STATUS_OK;
+  }
   SetError(error, "%s%s", "[bigquery] Unknown database option ", key);
   return ADBC_STATUS_INVALID_ARGUMENT;
 }
