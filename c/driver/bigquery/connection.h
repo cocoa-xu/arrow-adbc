@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include <adbc.h>
 
@@ -77,5 +78,6 @@ class BigqueryConnection {
 
  protected:
   std::shared_ptr<BigqueryDatabase> database_;
+  std::unordered_map<std::string, std::string> options_;
 };
 }  // namespace adbc_bigquery

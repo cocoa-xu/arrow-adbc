@@ -83,9 +83,14 @@ class BigqueryStatement {
     }
   }
 
-  template <typename T = std::string>
+  template <typename T>
   auto handleOptionValue(const std::string& value) -> T {
     return T{};
+  }
+
+  template <>
+  auto handleOptionValue(const std::string& value) -> std::string {
+    return value;
   }
 
   template <>

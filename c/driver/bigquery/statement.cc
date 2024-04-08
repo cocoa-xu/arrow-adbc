@@ -35,6 +35,7 @@
 #include "connection.h"
 #include "database.h"
 #include "readrowsiterator.h"
+#include "utils.h"
 
 namespace adbc_bigquery {
 AdbcStatusCode BigqueryStatement::Bind(struct ArrowArray* values,
@@ -92,32 +93,39 @@ AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ::ArrowArrayStream* stream
       job_configuration_query.maximum_bytes_billed = 104857600;
     }
 
-    ::google::cloud::bigquery_v2_minimal_internal::DatasetReference dataset_reference;
     if (auto default_dataset = GetQueryRequestOption("default_dataset");
         default_dataset) {
+      ::google::cloud::bigquery_v2_minimal_internal::DatasetReference dataset_reference;
       std::string default_dataset_str = *default_dataset;
+      std::vector<std::string> dataset_parts = split(default_dataset_str, ".");
 
-      dataset_reference.project_id = connection_->database_->project_id();
-      dataset_reference.dataset_id = "google_trends";
+      if (dataset_parts.size() != 2) {
+        SetError(error, "[bigquery] Invalid default dataset reference: %s",
+                 default_dataset_str.c_str());
+        return ADBC_STATUS_INVALID_ARGUMENT;
+      }
+
+      dataset_reference.project_id = dataset_parts[0];
+      dataset_reference.dataset_id = dataset_parts[1];
       job_configuration_query.default_dataset = dataset_reference;
     }
     if (auto destination_table = GetQueryRequestOption("destination_table");
         destination_table) {
-      std::string destination_table_str = *destination_table;
       ::google::cloud::bigquery_v2_minimal_internal::TableReference table_reference;
-      table_reference.project_id = connection_->database_->project_id();
-      table_reference.dataset_id = "google_trends";
-      table_reference.table_id = "mytesttable";
+      std::string destination_table_str = *destination_table;
+      std::vector<std::string> table_parts = split(destination_table_str, ".");
+
+      if (table_parts.size() != 3) {
+        SetError(error, "[bigquery] Invalid default dataset reference: %s",
+                 destination_table_str.c_str());
+        return ADBC_STATUS_INVALID_ARGUMENT;
+      }
+
+      table_reference.project_id = table_parts[0];
+      table_reference.dataset_id = table_parts[1];
+      table_reference.table_id = table_parts[2];
       job_configuration_query.destination_table = table_reference;
     }
-    dataset_reference.dataset_id = "google_trends";
-    dataset_reference.project_id = connection_->database_->project_id();
-
-    ::google::cloud::bigquery_v2_minimal_internal::TableReference table_reference;
-    table_reference.project_id = connection_->database_->project_id();
-    table_reference.dataset_id = "google_trends";
-    table_reference.table_id = "mytesttable";
-    job_configuration_query.destination_table = table_reference;
     job_configuration_query.script_options.key_result_statement =
         ::google::cloud::bigquery_v2_minimal_internal::KeyResultStatementKind::Last();
 
@@ -146,6 +154,8 @@ AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ::ArrowArrayStream* stream
                "[bigquery] Cannot execute query: code=", status.status().code(),
                status.status().message().c_str());
       return ADBC_STATUS_INVALID_STATE;
+    } else {
+      printf("Job ID: %s\r\n", status.value().job_reference.job_id.c_str());
     }
 
     std::string project_name =
@@ -155,10 +165,13 @@ AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ::ArrowArrayStream* stream
                              "/tables/" +
                              job_configuration_query.destination_table.table_id;
     auto iterator = std::make_shared<ReadRowsIterator>(project_name, table_name);
+    printf("Table name: %s\r\n", table_name.c_str());
     int ret = iterator->init(error);
     if (ret != ADBC_STATUS_OK) {
       return ret;
     }
+
+    printf("ReadRowsIterator\r\n");
 
     stream->private_data = new std::shared_ptr<ReadRowsIterator>(iterator);
     stream->get_next = ReadRowsIterator::get_next;
@@ -211,6 +224,7 @@ AdbcStatusCode BigqueryStatement::New(struct AdbcConnection* connection,
   }
   connection_ =
       *reinterpret_cast<std::shared_ptr<BigqueryConnection>*>(connection->private_data);
+  this->options_ = connection_->options_;
   return ADBC_STATUS_OK;
 }
 

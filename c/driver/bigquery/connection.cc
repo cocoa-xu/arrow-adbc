@@ -132,8 +132,8 @@ AdbcStatusCode BigqueryConnection::Rollback(struct AdbcError* error) {
 
 AdbcStatusCode BigqueryConnection::SetOption(const char* key, const char* value,
                                              struct AdbcError* error) {
-  SetError(error, "%s%s", "[bigquery] Unknown connection option ", key);
-  return ADBC_STATUS_INVALID_ARGUMENT;
+  options_[key] = value;
+  return ADBC_STATUS_OK;
 }
 
 AdbcStatusCode BigqueryConnection::SetOptionBytes(const char* key, const uint8_t* value,
