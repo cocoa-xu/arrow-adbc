@@ -136,8 +136,9 @@ set(CMAKE_PREFIX_PATH "${BIGQUERY_INSTALL_PREFIX};${BIGQUERY_INSTALL_PREFIX}/ope
 set(BIGQUERY_INCLUDE_DIRS "${BIGQUERY_INSTALL_PREFIX}/include")
 
 find_package(OpenSSL REQUIRED)
+find_package(Arrow REQUIRED)
 find_package(google_cloud_cpp_bigquery REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
-set(BIGQUERY_LINK_LIBRARIES google-cloud-cpp::bigquery)
+set(BIGQUERY_LINK_LIBRARIES google-cloud-cpp::bigquery Arrow::arrow_static)
 
 if(NOT DEFINED ADBC_DRIVER_BIGQUERY_ENDIAN)
   if(CMAKE_VERSION VERSION_LESS "3.20.0")
