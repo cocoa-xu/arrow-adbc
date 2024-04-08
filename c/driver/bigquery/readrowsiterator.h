@@ -39,7 +39,8 @@ class ReadRowsIterator {
   using ReadSession =
       std::shared_ptr<::google::cloud::bigquery::storage::v1::ReadSession>;
 
-  ReadRowsIterator() {}
+  ReadRowsIterator(const std::string& project_name, const std::string& table_name)
+      : project_name_(project_name), table_name_(table_name) {}
 
   AdbcStatusCode init(struct AdbcError* error);
   AdbcStatusCode read_next();
@@ -51,7 +52,7 @@ class ReadRowsIterator {
   static void release(struct ArrowArrayStream* stream);
 
  protected:
-  std::string project_name_ = "projects/bigquery-poc-418913";
+  std::string project_name_;
   std::string table_name_ =
       "projects/bigquery-poc-418913/datasets/google_trends/tables/small_top_terms";
   decltype(::google::cloud::bigquery_storage_v1::MakeBigQueryReadConnection())

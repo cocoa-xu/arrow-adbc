@@ -58,8 +58,6 @@ AdbcStatusCode ReadRowsIterator::init(struct AdbcError* error) {
   current_ = response_->begin();
   this->read_next();
 
-  printf("[debug] init ok\r\n");
-
   return ADBC_STATUS_OK;
 }
 
