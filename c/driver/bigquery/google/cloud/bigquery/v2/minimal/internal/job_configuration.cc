@@ -25,21 +25,21 @@ GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_BEGIN
 std::string JobConfiguration::DebugString(absl::string_view name,
                                           TracingOptions const& options,
                                           int indent) const {
-  return internal::DebugFormatter(name, options, indent)
-      .StringField("job_type", job_type)
-      .Field("dry_run", dry_run)
-      .Field("job_timeout", job_timeout)
-      .Field("labels", labels)
-      .SubMessage("query_config", query)
-      .Build();
+  
+  auto f = internal::DebugFormatter(name, options, indent);
+  if (job_type) f.StringField("job_type", *job_type);
+  if (dry_run) f.Field("dry_run", *dry_run);
+  f.Field("job_timeout", job_timeout);
+  if (labels) f.Field("labels", *labels);
+  if (query) f.SubMessage("query_config", *query);
+  return f.Build();
 }
 
 void to_json(nlohmann::json& j, JobConfiguration const& c) {
-  j = nlohmann::json{{"jobType", c.job_type},
-                     {"query", c.query},
-                     {"dryRun", c.dry_run},
-                     {"labels", c.labels}};
-
+  if (c.job_type) j["jobType"] = *c.job_type;
+  if (c.query) j["query"] = *c.query;
+  if (c.dry_run) j["dryRun"] = *c.dry_run;
+  if (c.labels) j["labels"] = *c.labels;
   ToJson(c.job_timeout, j, "jobTimeoutMs");
 }
 void from_json(nlohmann::json const& j, JobConfiguration& c) {

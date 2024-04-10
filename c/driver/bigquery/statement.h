@@ -25,6 +25,7 @@
 #include <unordered_map>
 
 #include <adbc.h>
+#include <absl/types/optional.h>
 #include "connection.h"
 
 #include "common/utils.h"
@@ -62,6 +63,14 @@ class BigqueryStatement {
   AdbcStatusCode SetOptionDouble(const char* key, double value, struct AdbcError* error);
   AdbcStatusCode SetOptionInt(const char* key, int64_t value, struct AdbcError* error);
   AdbcStatusCode SetSqlQuery(const char* query, struct AdbcError* error);
+
+  template <typename T>
+  void GetAndAssignQueryRequestOption(const char* key, absl::optional<T>& assign_to) {
+    auto value = GetQueryRequestOption<T>(key);
+    if (value) {
+      assign_to = *value;
+    }
+  }
 
   template <typename T = std::string>
   auto GetQueryRequestOption(const char* key) -> std::optional<T> {

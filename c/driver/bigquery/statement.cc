@@ -57,41 +57,25 @@ AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ::ArrowArrayStream* stream
                                                int64_t* rows_affected,
                                                struct AdbcError* error) {
   if (stream) {
-    auto job_configuration_query =
-        ::google::cloud::bigquery_v2_minimal_internal::JobConfigurationQuery();
+    ::google::cloud::bigquery_v2_minimal_internal::JobConfigurationQuery job_configuration_query;
+
     if (auto query = GetQueryRequestOption("query"); query) {
       job_configuration_query.query = *query;
     } else {
       SetError(error, "[bigquery] Missing SQL query");
       return ADBC_STATUS_INVALID_ARGUMENT;
     }
-
-    if (auto parameter_mode = GetQueryRequestOption("parameter_mode"); parameter_mode) {
-      job_configuration_query.parameter_mode = *parameter_mode;
-    }
-    if (auto preserve_nulls = GetQueryRequestOption<bool>("preserve_nulls");
-        preserve_nulls) {
-      job_configuration_query.preserve_nulls = *preserve_nulls;
-    }
-    if (auto use_query_cache = GetQueryRequestOption<bool>("use_query_cache");
-        use_query_cache) {
-      job_configuration_query.use_query_cache = *use_query_cache;
-    }
-    if (auto use_legacy_sql = GetQueryRequestOption<bool>("use_legacy_sql");
-        use_legacy_sql) {
-      job_configuration_query.use_legacy_sql = *use_legacy_sql;
-    }
-    if (auto create_session = GetQueryRequestOption<bool>("create_session");
-        create_session) {
-      job_configuration_query.create_session = *create_session;
-    }
-    if (auto max_bytes_billed =
-            GetQueryRequestOption<std::int64_t>("maximum_bytes_billed");
-        max_bytes_billed) {
-      job_configuration_query.maximum_bytes_billed = *max_bytes_billed;
-    } else {
-      job_configuration_query.maximum_bytes_billed = 104857600;
-    }
+    GetAndAssignQueryRequestOption("create_disposition", job_configuration_query.create_disposition);
+    GetAndAssignQueryRequestOption("write_disposition", job_configuration_query.write_disposition);
+    GetAndAssignQueryRequestOption("priority", job_configuration_query.priority);
+    GetAndAssignQueryRequestOption("parameter_mode", job_configuration_query.parameter_mode);
+    GetAndAssignQueryRequestOption("preserve_nulls", job_configuration_query.preserve_nulls);
+    GetAndAssignQueryRequestOption("allow_large_results", job_configuration_query.allow_large_results);
+    GetAndAssignQueryRequestOption("use_query_cache", job_configuration_query.use_query_cache);
+    GetAndAssignQueryRequestOption("flatten_results", job_configuration_query.flatten_results);
+    GetAndAssignQueryRequestOption("use_legacy_sql", job_configuration_query.use_legacy_sql);
+    GetAndAssignQueryRequestOption("create_session", job_configuration_query.create_session);
+    GetAndAssignQueryRequestOption("maximum_bytes_billed", job_configuration_query.maximum_bytes_billed);
 
     if (auto default_dataset = GetQueryRequestOption("default_dataset");
         default_dataset) {
@@ -126,20 +110,12 @@ AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ::ArrowArrayStream* stream
       table_reference.table_id = table_parts[2];
       job_configuration_query.destination_table = table_reference;
     }
-    job_configuration_query.script_options.key_result_statement =
-        ::google::cloud::bigquery_v2_minimal_internal::KeyResultStatementKind::Last();
 
     ::google::cloud::bigquery_v2_minimal_internal::JobConfiguration job_configuration;
     job_configuration.query = job_configuration_query;
 
     ::google::cloud::bigquery_v2_minimal_internal::Job job;
     job.configuration = job_configuration;
-    job.job_reference.location = "US";
-    job.configuration.query.allow_large_results = true;
-    job.statistics.script_statistics.evaluation_kind =
-        ::google::cloud::bigquery_v2_minimal_internal::EvaluationKind::Statement();
-    job.statistics.job_query_stats.search_statistics.index_usage_mode =
-        ::google::cloud::bigquery_v2_minimal_internal::IndexUsageMode::FullyUsed();
 
     ::google::cloud::bigquery_v2_minimal_internal::InsertJobRequest insert_job_request;
     insert_job_request.set_project_id(connection_->database_->project_id());
@@ -154,24 +130,25 @@ AdbcStatusCode BigqueryStatement::ExecuteQuery(struct ::ArrowArrayStream* stream
                "[bigquery] Cannot execute query: code=", status.status().code(),
                status.status().message().c_str());
       return ADBC_STATUS_INVALID_STATE;
-    } else {
-      printf("Job ID: %s\r\n", status.value().job_reference.job_id.c_str());
+    }
+    auto job_response = status.value();
+    if (!job_response.configuration || !job_response.configuration->query || !job_response.configuration->query->destination_table) {
+      SetError(error, "[bigquery] Missing destination table in response");
+      return ADBC_STATUS_INVALID_STATE;
     }
 
+    auto destination_table = job_response.configuration->query->destination_table;
     std::string project_name =
-        "projects/" + job_configuration_query.destination_table.project_id;
-    std::string table_name = project_name + "/datasets" +
-                             job_configuration_query.destination_table.dataset_id +
+        "projects/" + destination_table->project_id;
+    std::string table_name = project_name + "/datasets/" +
+                             destination_table->dataset_id +
                              "/tables/" +
-                             job_configuration_query.destination_table.table_id;
+                             destination_table->table_id;
     auto iterator = std::make_shared<ReadRowsIterator>(project_name, table_name);
-    printf("Table name: %s\r\n", table_name.c_str());
     int ret = iterator->init(error);
     if (ret != ADBC_STATUS_OK) {
       return ret;
     }
-
-    printf("ReadRowsIterator\r\n");
 
     stream->private_data = new std::shared_ptr<ReadRowsIterator>(iterator);
     stream->get_next = ReadRowsIterator::get_next;
