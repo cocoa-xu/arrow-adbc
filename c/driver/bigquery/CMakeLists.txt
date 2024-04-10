@@ -138,8 +138,147 @@ set(BIGQUERY_INCLUDE_DIRS "${BIGQUERY_INSTALL_PREFIX}/include")
 find_package(OpenSSL REQUIRED)
 find_package(Arrow REQUIRED)
 find_package(google_cloud_cpp_bigquery REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
-find_package(google_cloud_cpp_bigquery_rest REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
-set(BIGQUERY_LINK_LIBRARIES google-cloud-cpp::bigquery google-cloud-cpp::experimental-bigquery_rest Arrow::arrow_static)
+find_package(google_cloud_cpp_rest_internal REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
+find_package(google_cloud_cpp_common REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
+
+add_library(
+    google_cloud_cpp_bigquery_rest # cmake-format: sort
+    v2/minimal/internal/bigquery_http_response.cc
+    v2/minimal/internal/bigquery_http_response.h
+    v2/minimal/internal/common_options.h
+    v2/minimal/internal/common_v2_resources.cc
+    v2/minimal/internal/common_v2_resources.h
+    v2/minimal/internal/dataset.cc
+    v2/minimal/internal/dataset.h
+    v2/minimal/internal/dataset_client.cc
+    v2/minimal/internal/dataset_client.h
+    v2/minimal/internal/dataset_connection.cc
+    v2/minimal/internal/dataset_connection.h
+    v2/minimal/internal/dataset_idempotency_policy.cc
+    v2/minimal/internal/dataset_idempotency_policy.h
+    v2/minimal/internal/dataset_logging.cc
+    v2/minimal/internal/dataset_logging.h
+    v2/minimal/internal/dataset_metadata.cc
+    v2/minimal/internal/dataset_metadata.h
+    v2/minimal/internal/dataset_options.cc
+    v2/minimal/internal/dataset_options.h
+    v2/minimal/internal/dataset_request.cc
+    v2/minimal/internal/dataset_request.h
+    v2/minimal/internal/dataset_response.cc
+    v2/minimal/internal/dataset_response.h
+    v2/minimal/internal/dataset_rest_connection_impl.cc
+    v2/minimal/internal/dataset_rest_connection_impl.h
+    v2/minimal/internal/dataset_rest_stub.cc
+    v2/minimal/internal/dataset_rest_stub.h
+    v2/minimal/internal/dataset_rest_stub_factory.cc
+    v2/minimal/internal/dataset_rest_stub_factory.h
+    v2/minimal/internal/dataset_retry_policy.h
+    v2/minimal/internal/job.cc
+    v2/minimal/internal/job.h
+    v2/minimal/internal/job_client.cc
+    v2/minimal/internal/job_client.h
+    v2/minimal/internal/job_configuration.cc
+    v2/minimal/internal/job_configuration.h
+    v2/minimal/internal/job_configuration_query.cc
+    v2/minimal/internal/job_configuration_query.h
+    v2/minimal/internal/job_connection.cc
+    v2/minimal/internal/job_connection.h
+    v2/minimal/internal/job_idempotency_policy.cc
+    v2/minimal/internal/job_idempotency_policy.h
+    v2/minimal/internal/job_logging.cc
+    v2/minimal/internal/job_logging.h
+    v2/minimal/internal/job_metadata.cc
+    v2/minimal/internal/job_metadata.h
+    v2/minimal/internal/job_options.cc
+    v2/minimal/internal/job_options.h
+    v2/minimal/internal/job_query_stats.cc
+    v2/minimal/internal/job_query_stats.h
+    v2/minimal/internal/job_request.cc
+    v2/minimal/internal/job_request.h
+    v2/minimal/internal/job_response.cc
+    v2/minimal/internal/job_response.h
+    v2/minimal/internal/job_rest_connection_impl.cc
+    v2/minimal/internal/job_rest_connection_impl.h
+    v2/minimal/internal/job_rest_stub.cc
+    v2/minimal/internal/job_rest_stub.h
+    v2/minimal/internal/job_rest_stub_factory.cc
+    v2/minimal/internal/job_rest_stub_factory.h
+    v2/minimal/internal/job_retry_policy.h
+    v2/minimal/internal/job_stats.cc
+    v2/minimal/internal/job_stats.h
+    v2/minimal/internal/json_utils.cc
+    v2/minimal/internal/json_utils.h
+    v2/minimal/internal/log_wrapper.h
+    v2/minimal/internal/project.cc
+    v2/minimal/internal/project.h
+    v2/minimal/internal/project_client.cc
+    v2/minimal/internal/project_client.h
+    v2/minimal/internal/project_connection.cc
+    v2/minimal/internal/project_connection.h
+    v2/minimal/internal/project_idempotency_policy.cc
+    v2/minimal/internal/project_idempotency_policy.h
+    v2/minimal/internal/project_logging.cc
+    v2/minimal/internal/project_logging.h
+    v2/minimal/internal/project_metadata.cc
+    v2/minimal/internal/project_metadata.h
+    v2/minimal/internal/project_options.cc
+    v2/minimal/internal/project_options.h
+    v2/minimal/internal/project_request.cc
+    v2/minimal/internal/project_request.h
+    v2/minimal/internal/project_response.cc
+    v2/minimal/internal/project_response.h
+    v2/minimal/internal/project_rest_connection_impl.cc
+    v2/minimal/internal/project_rest_connection_impl.h
+    v2/minimal/internal/project_rest_stub.cc
+    v2/minimal/internal/project_rest_stub.h
+    v2/minimal/internal/project_rest_stub_factory.cc
+    v2/minimal/internal/project_rest_stub_factory.h
+    v2/minimal/internal/project_retry_policy.h
+    v2/minimal/internal/rest_stub_utils.cc
+    v2/minimal/internal/rest_stub_utils.h
+    v2/minimal/internal/table.cc
+    v2/minimal/internal/table.h
+    v2/minimal/internal/table_client.cc
+    v2/minimal/internal/table_client.h
+    v2/minimal/internal/table_connection.cc
+    v2/minimal/internal/table_connection.h
+    v2/minimal/internal/table_constraints.cc
+    v2/minimal/internal/table_constraints.h
+    v2/minimal/internal/table_idempotency_policy.cc
+    v2/minimal/internal/table_idempotency_policy.h
+    v2/minimal/internal/table_logging.cc
+    v2/minimal/internal/table_logging.h
+    v2/minimal/internal/table_metadata.cc
+    v2/minimal/internal/table_metadata.h
+    v2/minimal/internal/table_options.cc
+    v2/minimal/internal/table_options.h
+    v2/minimal/internal/table_partition.cc
+    v2/minimal/internal/table_partition.h
+    v2/minimal/internal/table_request.cc
+    v2/minimal/internal/table_request.h
+    v2/minimal/internal/table_response.cc
+    v2/minimal/internal/table_response.h
+    v2/minimal/internal/table_rest_connection_impl.cc
+    v2/minimal/internal/table_rest_connection_impl.h
+    v2/minimal/internal/table_rest_stub.cc
+    v2/minimal/internal/table_rest_stub.h
+    v2/minimal/internal/table_rest_stub_factory.cc
+    v2/minimal/internal/table_rest_stub_factory.h
+    v2/minimal/internal/table_retry_policy.h
+    v2/minimal/internal/table_schema.cc
+    v2/minimal/internal/table_schema.h
+    v2/minimal/internal/table_view.cc
+    v2/minimal/internal/table_view.h)
+target_include_directories(
+    google_cloud_cpp_bigquery_rest
+    PUBLIC ${BIGQUERY_INSTALL_PREFIX})
+target_link_libraries(
+    google_cloud_cpp_bigquery_rest PUBLIC google-cloud-cpp::rest_internal
+                                          google-cloud-cpp::common)
+
+# find_package(google_cloud_cpp_bigquery_rest REQUIRED PATHS "${BIGQUERY_INSTALL_PREFIX}")
+# set(BIGQUERY_LINK_LIBRARIES google-cloud-cpp::bigquery google-cloud-cpp::experimental-bigquery_rest Arrow::arrow_static)
+set(BIGQUERY_LINK_LIBRARIES google-cloud-cpp::bigquery Arrow::arrow_static google_cloud_cpp_bigquery_rest)
 
 if(NOT DEFINED ADBC_DRIVER_BIGQUERY_ENDIAN)
   if(CMAKE_VERSION VERSION_LESS "3.20.0")
