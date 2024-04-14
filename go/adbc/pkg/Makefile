@@ -27,6 +27,7 @@ endif
 
 DRIVERS := \
 	libadbc_driver_flightsql.$(SUFFIX) \
+	libadbc_driver_mocks.$(SUFFIX) \
 	libadbc_driver_panicdummy.$(SUFFIX) \
 	libadbc_driver_snowflake.$(SUFFIX)
 
@@ -39,6 +40,7 @@ libadbc_driver_%.$(SUFFIX): %
 
 regenerate:
 	go run gen/main.go -prefix FlightSQL -o ./flightsql/ -driver ../driver/flightsql
+	go run gen/main.go -prefix Mocks -o ./mocks/ -driver ../driver/mocks
 	go run gen/main.go -prefix PanicDummy -o ./panicdummy/ -driver ../driver/panicdummy
 	go run gen/main.go -prefix Snowflake -o ./snowflake/ -driver ../driver/snowflake
 
